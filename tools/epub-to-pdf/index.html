@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EPUB to PDF – tools.aaris.tech</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(160deg, #0c0c0f 0%, #141420 40%, #0f1118 100%);
+      font-family: 'Outfit', sans-serif;
+      color: #e8e8ed;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+    .back {
+      display: inline-block; margin-bottom: 12px; font-size: 13px;
+      font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.2);
+      text-decoration: none; letter-spacing: 0.1em;
+    }
+    .back:hover { color: rgba(255,255,255,0.4); }
+    header { text-align: center; margin-bottom: 40px; }
+    .icon { font-size: 32px; margin-bottom: 12px; }
+    h1 {
+      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .subtitle { font-size: 16px; color: rgba(255,255,255,0.45); font-weight: 300; }
+    .badge {
+      display: inline-block; margin-top: 8px;
+      font-size: 10px; font-family: 'JetBrains Mono', monospace;
+      color: rgba(59,130,246,0.8); letter-spacing: 0.08em;
+      padding: 4px 10px; background: rgba(59,130,246,0.08);
+      border: 1px solid rgba(59,130,246,0.2); border-radius: 6px;
+    }
+
+    .dropzone {
+      border: 2px dashed rgba(255,255,255,0.08);
+      border-radius: 16px; padding: 60px 24px;
+      text-align: center; cursor: pointer;
+      transition: all 0.25s; margin-bottom: 24px;
+      position: relative;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: rgba(245,158,11,0.4);
+      background: rgba(245,158,11,0.03);
+    }
+    .dropzone-icon { font-size: 40px; margin-bottom: 16px; display: block; }
+    .dropzone-text { font-size: 16px; color: rgba(255,255,255,0.5); }
+    .dropzone-hint { font-size: 13px; color: rgba(255,255,255,0.2); margin-top: 8px;
+      font-family: 'JetBrains Mono', monospace; }
+    .dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+    .file-info {
+      display: flex; align-items: center; gap: 14px;
+      padding: 16px 20px; background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px; margin-bottom: 20px;
+      animation: fadeIn 0.3s ease;
+    }
+    .file-icon { font-size: 24px; flex-shrink: 0; }
+    .file-details { flex: 1; min-width: 0; }
+    .file-name { font-size: 15px; font-weight: 500; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; }
+    .file-size { font-size: 13px; color: rgba(255,255,255,0.35);
+      font-family: 'JetBrains Mono', monospace; }
+    .file-remove {
+      background: none; border: none; color: rgba(255,255,255,0.2);
+      font-size: 20px; cursor: pointer; padding: 4px 8px;
+      font-family: 'Outfit', sans-serif;
+    }
+    .file-remove:hover { color: rgba(255,255,255,0.5); }
+
+    .book-meta {
+      display: flex; gap: 16px; align-items: flex-start;
+      padding: 18px 20px; background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px; margin-bottom: 20px;
+      animation: fadeIn 0.3s ease;
+    }
+    .book-cover {
+      width: 80px; height: 110px; border-radius: 6px;
+      object-fit: cover; flex-shrink: 0;
+      background: rgba(255,255,255,0.04);
+    }
+    .book-info { flex: 1; }
+    .book-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .book-author { font-size: 14px; color: rgba(255,255,255,0.5); margin-bottom: 8px; }
+    .book-chapters { font-size: 12px; font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.25); }
+
+    .settings { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .setting-group { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 6px; }
+    .setting-label {
+      font-size: 11px; font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.25); letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    select {
+      padding: 12px 14px; background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+      color: #e8e8ed; font-size: 14px; font-family: 'Outfit', sans-serif;
+      outline: none; cursor: pointer; width: 100%; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center;
+    }
+
+    .btn-convert {
+      width: 100%; padding: 16px 32px;
+      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
+      border: 1px solid rgba(245,158,11,0.3); border-radius: 14px;
+      color: #f59e0b; font-size: 16px; font-weight: 600;
+      font-family: 'Outfit', sans-serif; cursor: pointer;
+      transition: all 0.2s; margin-bottom: 16px;
+    }
+    .btn-convert:hover { background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(245,158,11,0.1)); }
+    .btn-convert:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .progress-wrap { margin-bottom: 20px; animation: fadeIn 0.3s ease; }
+    .progress-bar { height: 4px; background: rgba(255,255,255,0.06);
+      border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+    .progress-fill { height: 100%; border-radius: 2px;
+      background: linear-gradient(90deg, #f59e0b, #3b82f6);
+      transition: width 0.3s ease; width: 0%; }
+    .progress-text { font-size: 13px; color: rgba(255,255,255,0.3);
+      font-family: 'JetBrains Mono', monospace; text-align: center; }
+    .progress-fill.indeterminate {
+      width: 30% !important;
+      animation: indeterminate 1.5s ease-in-out infinite;
+    }
+
+    .status { padding: 14px 18px; border-radius: 12px; font-size: 14px;
+      margin-bottom: 16px; animation: fadeIn 0.3s ease; }
+    .status.ok { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); color: #4ade80; }
+    .status.error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #f87171; }
+
+    .hidden { display: none; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes indeterminate {
+      0% { margin-left: 0; }
+      50% { margin-left: 70%; }
+      100% { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back">← tools.aaris.tech</a>
+    <header>
+      <div class="icon">📖</div>
+      <h1>EPUB to PDF</h1>
+      <p class="subtitle">High-quality ebook conversion powered by Calibre</p>
+      <span class="badge">SERVER-SIDE · TABLE OF CONTENTS · PAGE NUMBERS</span>
+    </header>
+
+    <div class="dropzone" id="dropzone">
+      <span class="dropzone-icon">📂</span>
+      <div class="dropzone-text">Drop your EPUB file here or click to browse</div>
+      <div class="dropzone-hint">.epub files · max 100 MB</div>
+      <input type="file" id="fileInput" accept=".epub">
+    </div>
+
+    <div class="file-info hidden" id="fileInfo">
+      <span class="file-icon">📖</span>
+      <div class="file-details">
+        <div class="file-name" id="fileName"></div>
+        <div class="file-size" id="fileSize"></div>
+      </div>
+      <button class="file-remove" onclick="clearFile()">×</button>
+    </div>
+
+    <div class="book-meta hidden" id="bookMeta">
+      <img class="book-cover" id="bookCover" alt="Cover">
+      <div class="book-info">
+        <div class="book-title" id="bookTitle"></div>
+        <div class="book-author" id="bookAuthor"></div>
+        <div class="book-chapters" id="bookChapters"></div>
+      </div>
+    </div>
+
+    <div class="settings">
+      <div class="setting-group">
+        <span class="setting-label">Page size</span>
+        <select id="pageSize">
+          <option value="a4" selected>A4</option>
+          <option value="letter">Letter</option>
+          <option value="a5">A5</option>
+        </select>
+      </div>
+      <div class="setting-group">
+        <span class="setting-label">Margin (mm)</span>
+        <select id="margin">
+          <option value="10">Narrow (10mm)</option>
+          <option value="15" selected>Normal (15mm)</option>
+          <option value="20">Wide (20mm)</option>
+          <option value="25">Extra wide (25mm)</option>
+        </select>
+      </div>
+      <div class="setting-group">
+        <span class="setting-label">Font size</span>
+        <select id="fontSize">
+          <option value="10">Small (10px)</option>
+          <option value="12" selected>Medium (12px)</option>
+          <option value="14">Large (14px)</option>
+          <option value="16">Extra large (16px)</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="btn-convert" id="convertBtn" onclick="convert()" disabled>
+      Select an EPUB file to convert
+    </button>
+
+    <div class="progress-wrap hidden" id="progressWrap">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText">Preparing...</div>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    var currentFile = null;
+
+    // Drag & drop
+    var dropzone = document.getElementById('dropzone');
+    var fileInput = document.getElementById('fileInput');
+
+    dropzone.addEventListener('dragover', function(e) { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', function() { dropzone.classList.remove('dragover'); });
+    dropzone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      var file = e.dataTransfer.files[0];
+      if (file && file.name.endsWith('.epub')) handleFile(file);
+      else showStatus('Please select an .epub file', 'error');
+    });
+    fileInput.addEventListener('change', function(e) {
+      if (e.target.files[0]) handleFile(e.target.files[0]);
+    });
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    async function handleFile(file) {
+      currentFile = file;
+      document.getElementById('fileInfo').classList.remove('hidden');
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('fileSize').textContent = formatSize(file.size);
+      document.getElementById('convertBtn').disabled = false;
+      document.getElementById('convertBtn').textContent = 'Convert to PDF';
+      document.getElementById('status').innerHTML = '';
+      document.getElementById('progressWrap').classList.add('hidden');
+      dropzone.classList.add('hidden');
+
+      // Parse metadata with JSZip
+      try {
+        var zip = await JSZip.loadAsync(file);
+        await showMetadata(zip);
+      } catch (e) { /* metadata is optional */ }
+    }
+
+    function clearFile() {
+      currentFile = null;
+      document.getElementById('fileInfo').classList.add('hidden');
+      document.getElementById('bookMeta').classList.add('hidden');
+      document.getElementById('convertBtn').disabled = true;
+      document.getElementById('convertBtn').textContent = 'Select an EPUB file to convert';
+      document.getElementById('status').innerHTML = '';
+      document.getElementById('progressWrap').classList.add('hidden');
+      dropzone.classList.remove('hidden');
+      fileInput.value = '';
+    }
+
+    async function showMetadata(zip) {
+      try {
+        var containerXml = await zip.file('META-INF/container.xml').async('text');
+        var parser = new DOMParser();
+        var container = parser.parseFromString(containerXml, 'application/xml');
+        var opfPath = container.querySelector('rootfile').getAttribute('full-path');
+        var opfXml = await zip.file(opfPath).async('text');
+        var opf = parser.parseFromString(opfXml, 'application/xml');
+        var opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+
+        var titleEl = opf.querySelector('metadata *|title') || opf.querySelector('title');
+        var authorEl = opf.querySelector('metadata *|creator') || opf.querySelector('creator');
+        var title = titleEl ? titleEl.textContent.trim() : currentFile.name.replace('.epub', '');
+        var author = authorEl ? authorEl.textContent.trim() : 'Unknown author';
+
+        var spine = opf.querySelector('spine');
+        var spineItems = spine ? spine.querySelectorAll('itemref') : [];
+
+        document.getElementById('bookTitle').textContent = title;
+        document.getElementById('bookAuthor').textContent = author;
+        document.getElementById('bookChapters').textContent = spineItems.length + ' chapters';
+
+        // Cover image
+        var coverMeta = opf.querySelector('meta[name="cover"]');
+        var coverId = coverMeta ? coverMeta.getAttribute('content') : null;
+        var coverItem = coverId ? opf.querySelector('item[id="' + coverId + '"]') : null;
+        if (!coverItem) coverItem = opf.querySelector('item[properties~="cover-image"]');
+        if (!coverItem) coverItem = opf.querySelector('item[media-type^="image"][id*="cover"]');
+
+        var coverEl = document.getElementById('bookCover');
+        if (coverItem) {
+          var coverHref = opfDir + coverItem.getAttribute('href');
+          var coverFile = zip.file(coverHref);
+          if (coverFile) {
+            var blob = await coverFile.async('blob');
+            coverEl.src = URL.createObjectURL(blob);
+            coverEl.style.display = '';
+          } else { coverEl.style.display = 'none'; }
+        } else { coverEl.style.display = 'none'; }
+
+        document.getElementById('bookMeta').classList.remove('hidden');
+      } catch (e) { /* not critical */ }
+    }
+
+    function showStatus(msg, type) {
+      document.getElementById('status').innerHTML =
+        '<div class="status ' + type + '">' + msg + '</div>';
+    }
+
+    async function convert() {
+      if (!currentFile) return;
+
+      var btn = document.getElementById('convertBtn');
+      btn.disabled = true;
+      btn.textContent = 'Converting...';
+
+      var progressWrap = document.getElementById('progressWrap');
+      var progressFill = document.getElementById('progressFill');
+      var progressText = document.getElementById('progressText');
+      progressWrap.classList.remove('hidden');
+      document.getElementById('status').innerHTML = '';
+
+      // Show upload progress
+      progressFill.classList.remove('indeterminate');
+      progressFill.style.width = '0%';
+      progressText.textContent = 'Uploading...';
+
+      var formData = new FormData();
+      formData.append('file', currentFile);
+      formData.append('page_size', document.getElementById('pageSize').value);
+      formData.append('margin', document.getElementById('margin').value);
+      formData.append('font_size', document.getElementById('fontSize').value);
+
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.responseType = 'blob';
+
+        // Upload progress
+        xhr.upload.addEventListener('progress', function(e) {
+          if (e.lengthComputable) {
+            var pct = Math.round((e.loaded / e.total) * 100);
+            progressFill.style.width = pct + '%';
+            progressText.textContent = 'Uploading... ' + pct + '%';
+          }
+        });
+
+        xhr.upload.addEventListener('load', function() {
+          // Upload done, now waiting for conversion
+          progressFill.classList.add('indeterminate');
+          progressText.textContent = 'Converting with Calibre (this may take a minute)...';
+        });
+
+        xhr.addEventListener('load', function() {
+          if (xhr.status === 200) {
+            // Download the PDF
+            var blob = xhr.response;
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = currentFile.name.replace('.epub', '') + '.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            progressFill.classList.remove('indeterminate');
+            progressFill.style.width = '100%';
+            progressText.textContent = 'Done!';
+            showStatus('✓ PDF saved to your downloads', 'ok');
+          } else {
+            // Try to read error from response
+            var reader = new FileReader();
+            reader.onload = function() {
+              try {
+                var err = JSON.parse(reader.result);
+                showStatus('Conversion failed: ' + (err.error || 'Unknown error'), 'error');
+              } catch (e) {
+                showStatus('Conversion failed (HTTP ' + xhr.status + ')', 'error');
+              }
+            };
+            reader.readAsText(xhr.response);
+            progressFill.classList.remove('indeterminate');
+          }
+
+          btn.disabled = false;
+          btn.textContent = 'Convert to PDF';
+        });
+
+        xhr.addEventListener('error', function() {
+          showStatus('Connection failed — is the converter service running?', 'error');
+          progressFill.classList.remove('indeterminate');
+          btn.disabled = false;
+          btn.textContent = 'Convert to PDF';
+        });
+
+        xhr.open('POST', '/api/convert/epub-to-pdf');
+        xhr.send(formData);
+
+      } catch (e) {
+        showStatus('Error: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Convert to PDF';
+      }
+    }
+  </script>
+</body>
+</html>

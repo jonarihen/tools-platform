@@ -1,0 +1,7 @@
+{
+  "name": "Download Time Calculator",
+  "description": "Estimate how long a download will take based on your speed and file size (supports Mbps vs MB/s + GB vs GiB).",
+  "icon": "⏳",
+  "tag": "utility",
+  "order": 12
+}

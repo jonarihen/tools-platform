@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>tools.aaris.tech</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: linear-gradient(160deg, #0c0c0f 0%, #141420 40%, #0f1118 100%);
+      font-family: 'Outfit', sans-serif;
+      color: #e8e8ed;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 64px 24px 80px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+
+    .logo {
+      font-size: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 48px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      font-size: 17px;
+      color: rgba(255,255,255,0.35);
+      font-weight: 300;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      display: block;
+      padding: 28px 24px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.25s ease;
+    }
+
+    .card:hover {
+      border-color: rgba(255,255,255,0.15);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    }
+
+    .card-icon {
+      font-size: 28px;
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .card-name {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .card-desc {
+      font-size: 14px;
+      color: rgba(255,255,255,0.4);
+      font-weight: 300;
+      line-height: 1.5;
+    }
+
+    .card-tag {
+      display: inline-block;
+      margin-top: 14px;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.2);
+      letter-spacing: 0.08em;
+      padding: 4px 10px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 6px;
+    }
+
+    .empty {
+      text-align: center;
+      padding: 80px 20px;
+      color: rgba(255,255,255,0.2);
+    }
+
+    .empty code {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 8px 16px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card {
+      animation: fadeIn 0.4s ease both;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">tools.aaris.tech</div>
+      <h1>Toolbox</h1>
+      <p class="subtitle">Everyday utilities, all in one place</p>
+    </header>
+    <div id="grid" class="grid"></div>
+  </div>
+
+  <script>
+    async function loadTools() {
+      const grid = document.getElementById('grid');
+      try {
+        const res = await fetch('/manifest.json');
+        const tools = await res.json();
+
+        if (!tools.length) {
+          grid.innerHTML = `
+            <div class="empty" style="grid-column:1/-1">
+              <p>No tools yet</p>
+              <code>tools/my-tool/meta.json + index.html</code>
+            </div>`;
+          return;
+        }
+
+        // Sort by order (lower = first), then alphabetically
+        tools.sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.name.localeCompare(b.name));
+
+        grid.innerHTML = tools.map((tool, i) => `
+          <a href="/tools/${tool.slug}/" class="card" style="animation-delay:${i * 60}ms">
+            <span class="card-icon">${tool.icon || '🔧'}</span>
+            <div class="card-name">${tool.name}</div>
+            <div class="card-desc">${tool.description || ''}</div>
+            ${tool.tag ? `<span class="card-tag">${tool.tag}</span>` : ''}
+          </a>
+        `).join('');
+      } catch (e) {
+        grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><p>Failed to load tools</p></div>`;
+      }
+    }
+
+    loadTools();
+  </script>
+</body>
+</html>

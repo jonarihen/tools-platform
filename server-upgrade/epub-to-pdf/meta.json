@@ -1,0 +1,7 @@
+{
+  "name": "EPUB to PDF",
+  "description": "High-quality ebook conversion powered by Calibre — with table of contents and page numbers",
+  "icon": "📖",
+  "tag": "converter",
+  "order": 3
+}

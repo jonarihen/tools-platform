@@ -1,0 +1,7 @@
+{
+  "name": "Date Calculator",
+  "description": "Add/subtract time from a date, or calculate the difference between two dates (great for “days since…”).",
+  "icon": "📅",
+  "tag": "utility",
+  "order": 30
+}

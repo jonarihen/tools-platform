@@ -1,0 +1,7 @@
+{
+  "name": "JSON Formatter",
+  "description": "Paste messy JSON and get it pretty-printed instantly",
+  "icon": "{ }",
+  "tag": "dev",
+  "order": 5
+}

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ticket Ranker – tools.aaris.tech</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(160deg, #0c0c0f 0%, #141420 40%, #0f1118 100%);
+      font-family: 'Outfit', sans-serif;
+      color: #e8e8ed;
+    }
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes resultSlide {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef } = React;
+
+    const PHASES = { INPUT: "input", SORTING: "sorting", DONE: "done" };
+
+    function useSortEngine(items) {
+      const [sorted, setSorted] = useState([]);
+      const [currentItem, setCurrentItem] = useState(null);
+      const [compareWith, setCompareWith] = useState(null);
+      const [phase, setPhase] = useState(PHASES.INPUT);
+      const [progress, setProgress] = useState({ done: 0, total: 0 });
+
+      const lo = useRef(0);
+      const hi = useRef(0);
+      const itemIdx = useRef(0);
+      const totalComparisons = useRef(0);
+      const doneComparisons = useRef(0);
+
+      const estimateComparisons = (n) => {
+        let est = 0;
+        for (let i = 1; i < n; i++) est += Math.ceil(Math.log2(i + 1));
+        return est;
+      };
+
+      const startSort = () => {
+        if (items.length < 2) {
+          setSorted([...items]);
+          setPhase(PHASES.DONE);
+          return;
+        }
+        const total = estimateComparisons(items.length);
+        totalComparisons.current = total;
+        doneComparisons.current = 0;
+        setProgress({ done: 0, total });
+        setSorted([items[0]]);
+        itemIdx.current = 1;
+        lo.current = 0;
+        hi.current = 0;
+        const mid = 0;
+        setCurrentItem(items[1]);
+        setCompareWith(items[0]);
+        setPhase(PHASES.SORTING);
+      };
+
+      const nextComparison = (sortedList, idx) => {
+        if (idx >= items.length) {
+          setSorted(sortedList);
+          setPhase(PHASES.DONE);
+          return;
+        }
+        lo.current = 0;
+        hi.current = sortedList.length - 1;
+        const mid = Math.floor((0 + sortedList.length - 1) / 2);
+        setCurrentItem(items[idx]);
+        setCompareWith(sortedList[mid]);
+        setSorted(sortedList);
+      };
+
+      const choose = (pickedCurrent) => {
+        const mid = Math.floor((lo.current + hi.current) / 2);
+        doneComparisons.current += 1;
+        setProgress({ done: doneComparisons.current, total: totalComparisons.current });
+
+        if (pickedCurrent) {
+          hi.current = mid - 1;
+        } else {
+          lo.current = mid + 1;
+        }
+
+        if (lo.current > hi.current) {
+          const insertAt = lo.current;
+          const newSorted = [...sorted];
+          newSorted.splice(insertAt, 0, items[itemIdx.current]);
+          itemIdx.current += 1;
+          nextComparison(newSorted, itemIdx.current);
+        } else {
+          const newMid = Math.floor((lo.current + hi.current) / 2);
+          setCompareWith(sorted[newMid]);
+        }
+      };
+
+      return { sorted, currentItem, compareWith, phase, progress, startSort, choose, setPhase, setSorted };
+    }
+
+    function App() {
+      const [tickets, setTickets] = useState([]);
+      const [inputVal, setInputVal] = useState("");
+      const inputRef = useRef(null);
+      const engine = useSortEngine(tickets);
+      const [animKey, setAnimKey] = useState(0);
+
+      const addTicket = () => {
+        const val = inputVal.trim();
+        if (!val || tickets.includes(val)) return;
+        setTickets(t => [...t, val]);
+        setInputVal("");
+        inputRef.current?.focus();
+      };
+
+      const removeTicket = (idx) => setTickets(t => t.filter((_, i) => i !== idx));
+      const handleKeyDown = (e) => { if (e.key === "Enter") addTicket(); };
+      const handleChoose = (picked) => { setAnimKey(k => k + 1); engine.choose(picked); };
+      const reset = () => { setTickets([]); setInputVal(""); engine.setPhase(PHASES.INPUT); engine.setSorted([]); };
+      const startOver = () => { engine.setPhase(PHASES.INPUT); engine.setSorted([]); };
+
+      const progressPct = engine.progress.total > 0
+        ? Math.min(100, Math.round((engine.progress.done / engine.progress.total) * 100)) : 0;
+
+      return (
+        <div style={{ maxWidth: 720, margin: "0 auto", padding: "48px 24px 80px" }}>
+          <div style={{ textAlign: "center", marginBottom: 12 }}>
+            <a href="/" style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "rgba(255,255,255,0.2)", textDecoration: "none", letterSpacing: "0.1em" }}>
+              ← tools.aaris.tech
+            </a>
+          </div>
+          <header style={{ textAlign: "center", marginBottom: 48 }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>⚡</div>
+            <h1 style={{ fontSize: 40, fontWeight: 700, letterSpacing: "-0.03em", background: "linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 8 }}>Ticket Ranker</h1>
+            <p style={{ fontSize: 16, color: "rgba(255,255,255,0.45)", fontWeight: 300 }}>
+              {engine.phase === PHASES.INPUT && "Add your tickets, then sort by comparing pairs"}
+              {engine.phase === PHASES.SORTING && "Which ticket is more important?"}
+              {engine.phase === PHASES.DONE && "Here's your prioritized order"}
+            </p>
+          </header>
+
+          {engine.phase === PHASES.INPUT && (
+            <div style={{ animation: "fadeSlideIn 0.4s ease" }}>
+              <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+                <input ref={inputRef} type="text" value={inputVal} onChange={e => setInputVal(e.target.value)} onKeyDown={handleKeyDown}
+                  placeholder="Enter a ticket name or description…" autoFocus
+                  style={{ flex: 1, padding: "14px 18px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, color: "#e8e8ed", fontSize: 15, fontFamily: "'Outfit', sans-serif", outline: "none" }} />
+                <button onClick={addTicket} style={{ padding: "14px 28px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#e8e8ed", fontSize: 15, fontWeight: 500, fontFamily: "'Outfit', sans-serif", cursor: "pointer" }}>Add</button>
+              </div>
+              {tickets.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 32 }}>
+                  {tickets.map((t, i) => (
+                    <div key={t} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, animation: "fadeSlideIn 0.3s ease" }}>
+                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "rgba(255,255,255,0.25)", minWidth: 20 }}>{i + 1}</span>
+                      <span style={{ flex: 1, fontSize: 14, color: "rgba(255,255,255,0.75)" }}>{t}</span>
+                      <button onClick={() => removeTicket(i)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.2)", fontSize: 20, cursor: "pointer", padding: "0 4px", fontFamily: "'Outfit', sans-serif", lineHeight: 1 }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {tickets.length >= 2 && (
+                <button onClick={engine.startSort} style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 32px", background: "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05))", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 14, color: "#f59e0b", fontSize: 16, fontWeight: 600, fontFamily: "'Outfit', sans-serif", cursor: "pointer", width: "100%", justifyContent: "center" }}>
+                  Start Ranking ({tickets.length} tickets) →
+                </button>
+              )}
+              {tickets.length === 1 && <p style={{ textAlign: "center", color: "rgba(255,255,255,0.25)", fontSize: 14, marginTop: 16 }}>Add at least 2 tickets to start ranking</p>}
+            </div>
+          )}
+
+          {engine.phase === PHASES.SORTING && (
+            <div style={{ animation: "fadeSlideIn 0.4s ease" }}>
+              <div style={{ height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 2, marginBottom: 8, overflow: "hidden" }}>
+                <div style={{ height: "100%", background: "linear-gradient(90deg, #f59e0b, #3b82f6)", borderRadius: 2, transition: "width 0.4s ease", width: `${progressPct}%` }} />
+              </div>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", fontFamily: "'JetBrains Mono', monospace", textAlign: "center", marginBottom: 40 }}>
+                ~{progressPct}% complete · comparison {engine.progress.done + 1}
+              </p>
+              <div key={animKey} style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 32, animation: "fadeSlideIn 0.35s ease" }}>
+                <button onClick={() => handleChoose(true)}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#f59e0b"; e.currentTarget.style.transform = "translateY(-4px) scale(1.02)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.transform = "translateY(0) scale(1)"; }}
+                  style={{ flex: 1, padding: "32px 24px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, cursor: "pointer", textAlign: "center", fontFamily: "'Outfit', sans-serif", color: "#e8e8ed", transition: "all 0.25s ease", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 4px 20px rgba(0,0,0,0.3)", minHeight: 160, justifyContent: "center" }}>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>A</span>
+                  <span style={{ fontSize: 17, fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}>{engine.currentItem}</span>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", fontWeight: 300 }}>Click if more important</span>
+                </button>
+                <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>VS</div>
+                <button onClick={() => handleChoose(false)}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#3b82f6"; e.currentTarget.style.transform = "translateY(-4px) scale(1.02)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.transform = "translateY(0) scale(1)"; }}
+                  style={{ flex: 1, padding: "32px 24px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, cursor: "pointer", textAlign: "center", fontFamily: "'Outfit', sans-serif", color: "#e8e8ed", transition: "all 0.25s ease", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 4px 20px rgba(0,0,0,0.3)", minHeight: 160, justifyContent: "center" }}>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>B</span>
+                  <span style={{ fontSize: 17, fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}>{engine.compareWith}</span>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", fontWeight: 300 }}>Click if more important</span>
+                </button>
+              </div>
+              <p style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,0.2)" }}>💡 Uses binary search — minimal comparisons needed</p>
+            </div>
+          )}
+
+          {engine.phase === PHASES.DONE && (
+            <div style={{ animation: "fadeSlideIn 0.4s ease" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 40 }}>
+                {engine.sorted.map((t, i) => (
+                  <div key={t} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, animation: "resultSlide 0.4s ease both", animationDelay: `${i * 60}ms` }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0,
+                      background: i === 0 ? "linear-gradient(135deg, #f59e0b, #d97706)" : i === 1 ? "linear-gradient(135deg, #94a3b8, #64748b)" : i === 2 ? "linear-gradient(135deg, #b45309, #92400e)" : "rgba(255,255,255,0.06)",
+                      color: i < 3 ? "#fff" : "rgba(255,255,255,0.4)" }}>{i + 1}</div>
+                    <span style={{ flex: 1, fontSize: 15 }}>{t}</span>
+                    {i === 0 && <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#f59e0b", letterSpacing: "0.1em", padding: "4px 10px", background: "rgba(245,158,11,0.1)", borderRadius: 6 }}>TOP PRIORITY</span>}
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+                <button onClick={startOver} style={{ padding: "14px 24px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, color: "rgba(255,255,255,0.6)", fontSize: 14, fontWeight: 500, fontFamily: "'Outfit', sans-serif", cursor: "pointer" }}>Re-rank same tickets</button>
+                <button onClick={reset} style={{ padding: "16px 32px", background: "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05))", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 14, color: "#f59e0b", fontSize: 16, fontWeight: 600, fontFamily: "'Outfit', sans-serif", cursor: "pointer" }}>Start fresh</button>
+                <button onClick={() => { const text = engine.sorted.map((t, i) => `${i + 1}. ${t}`).join("\n"); navigator.clipboard?.writeText(text); }}
+                  style={{ padding: "14px 24px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, color: "rgba(255,255,255,0.6)", fontSize: 14, fontWeight: 500, fontFamily: "'Outfit', sans-serif", cursor: "pointer" }}>Copy list</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

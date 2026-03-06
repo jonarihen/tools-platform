@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unit Converter – tools.aaris.tech</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(160deg, #0c0c0f 0%, #141420 40%, #0f1118 100%);
+      font-family: 'Outfit', sans-serif;
+      color: #e8e8ed;
+    }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+    .back {
+      display: inline-block; margin-bottom: 12px; font-size: 13px;
+      font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.2);
+      text-decoration: none; letter-spacing: 0.1em;
+    }
+    .back:hover { color: rgba(255,255,255,0.4); }
+    header { text-align: center; margin-bottom: 36px; }
+    .icon { font-size: 32px; margin-bottom: 12px; }
+    h1 {
+      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .subtitle { font-size: 16px; color: rgba(255,255,255,0.45); font-weight: 300; }
+
+    /* Category tabs */
+    .tabs {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin-bottom: 28px; justify-content: center;
+    }
+    .tab {
+      padding: 8px 16px; border-radius: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.45); font-size: 13px; font-weight: 500;
+      font-family: 'Outfit', sans-serif; cursor: pointer;
+      transition: all 0.2s; white-space: nowrap;
+    }
+    .tab:hover { border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); }
+    .tab.active {
+      background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3);
+      color: #f59e0b; font-weight: 600;
+    }
+    .tab-icon { margin-right: 5px; }
+
+    /* Converter area */
+    .converter {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px; padding: 28px;
+      margin-bottom: 20px;
+    }
+    .row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
+    .field { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .label {
+      font-size: 11px; font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.25); letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    input[type="number"] {
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; color: #e8e8ed; font-size: 18px;
+      font-family: 'JetBrains Mono', monospace;
+      outline: none; width: 100%;
+      -moz-appearance: textfield;
+    }
+
+    /* Main result display (not an input) */
+    .output-box {
+      padding: 14px 16px;
+      background: rgba(245,158,11,0.04) !important;
+      border: 1px solid rgba(245,158,11,0.15) !important;
+      border-radius: 12px;
+      color: #f59e0b !important;
+      font-size: 18px;
+      font-family: 'JetBrains Mono', monospace;
+      width: 100%;
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      user-select: text;
+      cursor: pointer;
+    }
+    .output-box:focus {
+      outline: none;
+      border-color: rgba(245,158,11,0.3) !important;
+    }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type="number"]:focus { border-color: rgba(255,255,255,0.15); }
+    select {
+      padding: 14px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; color: #e8e8ed; font-size: 14px;
+      font-family: 'Outfit', sans-serif; outline: none; cursor: pointer;
+      width: 100%; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center;
+    }
+
+    /* Swap button */
+    .swap-btn {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.3); font-size: 18px;
+      cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-bottom: 1px;
+    }
+    .swap-btn:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.6);
+      transform: rotate(180deg); }
+
+    /* All conversions grid */
+    .results-label {
+      font-size: 11px; font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.2); letter-spacing: 0.08em;
+      text-transform: uppercase; margin-bottom: 12px;
+    }
+    .results-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 8px;
+    }
+    .result-card {
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 10px;
+      cursor: pointer; transition: all 0.2s;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .result-card:hover {
+      border-color: rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+    }
+    .result-card.active-unit {
+      border-color: rgba(245,158,11,0.25);
+      background: rgba(245,158,11,0.04);
+    }
+    .result-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 15px; font-weight: 600; color: #e8e8ed;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .result-unit {
+      font-size: 12px; color: rgba(255,255,255,0.3);
+    }
+    .result-abbr {
+      font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.15); font-size: 11px;
+    }
+
+    .copied-toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      padding: 10px 20px; background: rgba(34,197,94,0.15);
+      border: 1px solid rgba(34,197,94,0.3); border-radius: 10px;
+      color: #4ade80; font-size: 13px; font-family: 'JetBrains Mono', monospace;
+      animation: toastIn 0.3s ease, toastOut 0.3s ease 1.5s forwards;
+      z-index: 100;
+    }
+    @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+    @keyframes toastOut { from { opacity:1; } to { opacity:0; } }
+
+    .note {
+      font-size: 12px; color: rgba(255,255,255,0.15);
+      font-family: 'JetBrains Mono', monospace;
+      text-align: center; margin-top: 20px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .converter { animation: fadeIn 0.3s ease; }
+
+    @media (max-width: 500px) {
+      .row { flex-direction: column; }
+      .swap-btn { align-self: center; transform: rotate(90deg); }
+      .swap-btn:hover { transform: rotate(270deg); }
+      .results-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back">← tools.aaris.tech</a>
+    <header>
+      <div class="icon">🔄</div>
+      <h1>Unit Converter</h1>
+      <p class="subtitle">Built for IT — time, data, bandwidth, power and more</p>
+    </header>
+
+    <div class="tabs" id="tabs"></div>
+
+    <div class="converter" id="converter">
+      <div class="row">
+        <div class="field">
+          <span class="label">From</span>
+          <input type="number" id="inputVal" value="1" step="any">
+        </div>
+        <div class="field">
+          <span class="label">Unit</span>
+          <select id="fromUnit"></select>
+        </div>
+        <button class="swap-btn" onclick="swapUnits()" title="Swap">⇄</button>
+        <div class="field">
+          <span class="label">To</span>
+          <select id="toUnit"></select>
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:24px">
+        <span class="label">Result</span>
+        <div id="outputVal" class="output-box" tabindex="0" role="button" aria-label="Copy result"></div>
+      </div>
+
+      <div class="results-label">All conversions</div>
+      <div class="results-grid" id="resultsGrid"></div>
+    </div>
+
+    <div class="note">Click any value to copy · All conversions are instant and offline</div>
+  </div>
+
+  <script>
+    // ========== UNIT DEFINITIONS ==========
+    const categories = {
+      time: {
+        label: 'Time', icon: '⏱',
+        // base unit: seconds
+        units: {
+          ns:    { name: 'Nanoseconds',   abbr: 'ns',   toBase: 1e-9 },
+          us:    { name: 'Microseconds',  abbr: 'µs',   toBase: 1e-6 },
+          ms:    { name: 'Milliseconds',  abbr: 'ms',   toBase: 0.001 },
+          s:     { name: 'Seconds',       abbr: 's',    toBase: 1 },
+          min:   { name: 'Minutes',       abbr: 'min',  toBase: 60 },
+          hr:    { name: 'Hours',         abbr: 'hr',   toBase: 3600 },
+          day:   { name: 'Days',          abbr: 'd',    toBase: 86400 },
+          week:  { name: 'Weeks',         abbr: 'wk',   toBase: 604800 },
+          month: { name: 'Months (30d)',  abbr: 'mo',   toBase: 2592000 },
+          year:  { name: 'Years (365d)',  abbr: 'yr',   toBase: 31536000 },
+        }
+      },
+      data: {
+        label: 'Data Size', icon: '💾',
+        // base unit: bytes
+        units: {
+          bit:  { name: 'Bits',       abbr: 'b',    toBase: 0.125 },
+          B:    { name: 'Bytes',      abbr: 'B',    toBase: 1 },
+          KB:   { name: 'Kilobytes',  abbr: 'KB',   toBase: 1000 },
+          KiB:  { name: 'Kibibytes',  abbr: 'KiB',  toBase: 1024 },
+          MB:   { name: 'Megabytes',  abbr: 'MB',   toBase: 1e6 },
+          MiB:  { name: 'Mebibytes',  abbr: 'MiB',  toBase: 1048576 },
+          GB:   { name: 'Gigabytes',  abbr: 'GB',   toBase: 1e9 },
+          GiB:  { name: 'Gibibytes',  abbr: 'GiB',  toBase: 1073741824 },
+          TB:   { name: 'Terabytes',  abbr: 'TB',   toBase: 1e12 },
+          TiB:  { name: 'Tebibytes',  abbr: 'TiB',  toBase: 1099511627776 },
+          PB:   { name: 'Petabytes',  abbr: 'PB',   toBase: 1e15 },
+          PiB:  { name: 'Pebibytes',  abbr: 'PiB',  toBase: 1125899906842624 },
+        }
+      },
+      bandwidth: {
+        label: 'Bandwidth', icon: '📡',
+        // base unit: bits per second
+        units: {
+          bps:   { name: 'Bits/sec',       abbr: 'bps',   toBase: 1 },
+          Kbps:  { name: 'Kilobits/sec',   abbr: 'Kbps',  toBase: 1000 },
+          Mbps:  { name: 'Megabits/sec',   abbr: 'Mbps',  toBase: 1e6 },
+          Gbps:  { name: 'Gigabits/sec',   abbr: 'Gbps',  toBase: 1e9 },
+          Tbps:  { name: 'Terabits/sec',   abbr: 'Tbps',  toBase: 1e12 },
+          Bps:   { name: 'Bytes/sec',      abbr: 'B/s',   toBase: 8 },
+          KBps:  { name: 'Kilobytes/sec',  abbr: 'KB/s',  toBase: 8000 },
+          MBps:  { name: 'Megabytes/sec',  abbr: 'MB/s',  toBase: 8e6 },
+          GBps:  { name: 'Gigabytes/sec',  abbr: 'GB/s',  toBase: 8e9 },
+          KiBps: { name: 'Kibibytes/sec',  abbr: 'KiB/s', toBase: 8192 },
+          MiBps: { name: 'Mebibytes/sec',  abbr: 'MiB/s', toBase: 8388608 },
+          GiBps: { name: 'Gibibytes/sec',  abbr: 'GiB/s', toBase: 8589934592 },
+        }
+      },
+      frequency: {
+        label: 'Frequency', icon: '〜',
+        // base unit: Hz
+        units: {
+          Hz:  { name: 'Hertz',      abbr: 'Hz',  toBase: 1 },
+          KHz: { name: 'Kilohertz',  abbr: 'KHz', toBase: 1000 },
+          MHz: { name: 'Megahertz',  abbr: 'MHz', toBase: 1e6 },
+          GHz: { name: 'Gigahertz',  abbr: 'GHz', toBase: 1e9 },
+          THz: { name: 'Terahertz',  abbr: 'THz', toBase: 1e12 },
+          rpm: { name: 'RPM',        abbr: 'rpm', toBase: 1/60 },
+        }
+      },
+      power: {
+        label: 'Power', icon: '⚡',
+        // base unit: watts
+        units: {
+          mW:   { name: 'Milliwatts',       abbr: 'mW',    toBase: 0.001 },
+          W:    { name: 'Watts',             abbr: 'W',     toBase: 1 },
+          kW:   { name: 'Kilowatts',         abbr: 'kW',    toBase: 1000 },
+          MW:   { name: 'Megawatts',         abbr: 'MW',    toBase: 1e6 },
+          hp:   { name: 'Horsepower',        abbr: 'hp',    toBase: 745.7 },
+          BTUh: { name: 'BTU/hour',          abbr: 'BTU/h', toBase: 0.29307107 },
+          TR:   { name: 'Tons refrigeration', abbr: 'TR',   toBase: 3516.85 },
+          VA:   { name: 'Volt-amperes',      abbr: 'VA',    toBase: 1 },
+          kVA:  { name: 'Kilovolt-amperes',  abbr: 'kVA',   toBase: 1000 },
+        }
+      },
+      energy: {
+        label: 'Energy', icon: '🔋',
+        // base unit: joules
+        units: {
+          J:    { name: 'Joules',          abbr: 'J',    toBase: 1 },
+          kJ:   { name: 'Kilojoules',      abbr: 'kJ',   toBase: 1000 },
+          cal:  { name: 'Calories',        abbr: 'cal',  toBase: 4.184 },
+          kcal: { name: 'Kilocalories',    abbr: 'kcal', toBase: 4184 },
+          Wh:   { name: 'Watt-hours',      abbr: 'Wh',   toBase: 3600 },
+          kWh:  { name: 'Kilowatt-hours',  abbr: 'kWh',  toBase: 3600000 },
+          MWh:  { name: 'Megawatt-hours',  abbr: 'MWh',  toBase: 3.6e9 },
+          BTU:  { name: 'BTU',             abbr: 'BTU',  toBase: 1055.06 },
+        }
+      },
+      temperature: {
+        label: 'Temperature', icon: '🌡',
+        // special handling — not a simple multiplier
+        units: {
+          C: { name: 'Celsius',    abbr: '°C', toBase: null },
+          F: { name: 'Fahrenheit', abbr: '°F', toBase: null },
+          K: { name: 'Kelvin',     abbr: 'K',  toBase: null },
+        }
+      },
+      length: {
+        label: 'Length', icon: '📏',
+        // base unit: meters
+        units: {
+          mm:   { name: 'Millimeters', abbr: 'mm',  toBase: 0.001 },
+          cm:   { name: 'Centimeters', abbr: 'cm',  toBase: 0.01 },
+          m:    { name: 'Meters',      abbr: 'm',   toBase: 1 },
+          km:   { name: 'Kilometers',  abbr: 'km',  toBase: 1000 },
+          inch: { name: 'Inches',      abbr: 'in',  toBase: 0.0254 },
+          ft:   { name: 'Feet',        abbr: 'ft',  toBase: 0.3048 },
+          yd:   { name: 'Yards',       abbr: 'yd',  toBase: 0.9144 },
+          mi:   { name: 'Miles',       abbr: 'mi',  toBase: 1609.344 },
+          RU:   { name: 'Rack units',  abbr: 'U',   toBase: 0.04445 },
+        }
+      },
+      weight: {
+        label: 'Weight', icon: '⚖️',
+        // base unit: grams
+        units: {
+          mg:  { name: 'Milligrams', abbr: 'mg',  toBase: 0.001 },
+          g:   { name: 'Grams',      abbr: 'g',   toBase: 1 },
+          kg:  { name: 'Kilograms',  abbr: 'kg',  toBase: 1000 },
+          oz:  { name: 'Ounces',     abbr: 'oz',  toBase: 28.3495 },
+          lb:  { name: 'Pounds',     abbr: 'lb',  toBase: 453.592 },
+          ton: { name: 'Metric tons', abbr: 't',  toBase: 1e6 },
+        }
+      },
+      voltage: {
+        label: 'Voltage', icon: '🔌',
+        // base unit: volts
+        units: {
+          uV: { name: 'Microvolts',  abbr: 'µV', toBase: 1e-6 },
+          mV: { name: 'Millivolts',  abbr: 'mV', toBase: 0.001 },
+          V:  { name: 'Volts',       abbr: 'V',  toBase: 1 },
+          kV: { name: 'Kilovolts',   abbr: 'kV', toBase: 1000 },
+        }
+      },
+      current: {
+        label: 'Current', icon: '🔀',
+        // base unit: amperes
+        units: {
+          uA: { name: 'Microamps',  abbr: 'µA', toBase: 1e-6 },
+          mA: { name: 'Milliamps',  abbr: 'mA', toBase: 0.001 },
+          A:  { name: 'Amperes',    abbr: 'A',  toBase: 1 },
+          kA: { name: 'Kiloamps',   abbr: 'kA', toBase: 1000 },
+        }
+      },
+      pressure: {
+        label: 'Pressure', icon: '🎈',
+        // base unit: pascals
+        units: {
+          Pa:   { name: 'Pascals',     abbr: 'Pa',   toBase: 1 },
+          kPa:  { name: 'Kilopascals', abbr: 'kPa',  toBase: 1000 },
+          bar:  { name: 'Bar',         abbr: 'bar',  toBase: 100000 },
+          psi:  { name: 'PSI',         abbr: 'psi',  toBase: 6894.76 },
+          atm:  { name: 'Atmospheres', abbr: 'atm',  toBase: 101325 },
+          inHg: { name: 'Inches Hg',   abbr: 'inHg', toBase: 3386.39 },
+        }
+      },
+    };
+
+    // ========== TEMPERATURE SPECIAL CONVERSIONS ==========
+    function tempToBase(val, from) {
+      // Convert to Celsius as base
+      if (from === 'C') return val;
+      if (from === 'F') return (val - 32) * 5 / 9;
+      if (from === 'K') return val - 273.15;
+      return val;
+    }
+    function tempFromBase(baseVal, to) {
+      // Convert from Celsius
+      if (to === 'C') return baseVal;
+      if (to === 'F') return baseVal * 9 / 5 + 32;
+      if (to === 'K') return baseVal + 273.15;
+      return baseVal;
+    }
+
+    // ========== STATE ==========
+    let currentCategory = 'time';
+
+    // ========== INIT ==========
+    function init() {
+      const tabsEl = document.getElementById('tabs');
+      tabsEl.innerHTML = '';
+      for (var catId in categories) {
+        var cat = categories[catId];
+        var btn = document.createElement('button');
+        btn.className = 'tab' + (catId === currentCategory ? ' active' : '');
+        btn.setAttribute('data-cat', catId);
+        btn.innerHTML = '<span class="tab-icon">' + cat.icon + '</span>' + cat.label;
+        btn.addEventListener('click', function() {
+          switchCategory(this.getAttribute('data-cat'));
+        });
+        tabsEl.appendChild(btn);
+      }
+      populateSelects();
+      calculate();
+    }
+
+    function switchCategory(catId) {
+      currentCategory = catId;
+      // Update tab styles
+      document.querySelectorAll('.tab').forEach(function(t) {
+        t.classList.toggle('active', t.getAttribute('data-cat') === catId);
+      });
+      populateSelects();
+      document.getElementById('inputVal').value = 1;
+      calculate();
+    }
+
+    function populateSelects() {
+      var cat = categories[currentCategory];
+      var fromSelect = document.getElementById('fromUnit');
+      var toSelect = document.getElementById('toUnit');
+      fromSelect.innerHTML = '';
+      toSelect.innerHTML = '';
+
+      var keys = Object.keys(cat.units);
+      keys.forEach(function(key) {
+        var u = cat.units[key];
+        var opt1 = document.createElement('option');
+        opt1.value = key;
+        opt1.textContent = u.abbr + '  —  ' + u.name;
+        fromSelect.appendChild(opt1);
+
+        var opt2 = document.createElement('option');
+        opt2.value = key;
+        opt2.textContent = u.abbr + '  —  ' + u.name;
+        toSelect.appendChild(opt2);
+      });
+
+      // Set sensible defaults per category
+      var defaults = {
+        time: ['min', 'hr'],
+        data: ['GiB', 'GB'],
+        bandwidth: ['Mbps', 'MBps'],
+        frequency: ['MHz', 'GHz'],
+        power: ['W', 'kW'],
+        energy: ['Wh', 'kWh'],
+        temperature: ['C', 'F'],
+        length: ['m', 'ft'],
+        weight: ['kg', 'lb'],
+        voltage: ['mV', 'V'],
+        current: ['mA', 'A'],
+        pressure: ['bar', 'psi'],
+      };
+      if (defaults[currentCategory]) {
+        fromSelect.value = defaults[currentCategory][0];
+        toSelect.value = defaults[currentCategory][1];
+      } else {
+        fromSelect.selectedIndex = 0;
+        toSelect.selectedIndex = Math.min(1, keys.length - 1);
+      }
+    }
+
+    function convert(val, fromKey, toKey, catId) {
+      if (catId === 'temperature') {
+        var base = tempToBase(val, fromKey);
+        return tempFromBase(base, toKey);
+      }
+      var cat = categories[catId];
+      var baseVal = val * cat.units[fromKey].toBase;
+      return baseVal / cat.units[toKey].toBase;
+    }
+
+    function formatNumber(n) {
+      if (n === 0) return '0';
+      var abs = Math.abs(n);
+      if (abs >= 1e15 || (abs < 1e-10 && abs > 0)) return n.toExponential(6);
+      if (abs >= 1e6) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      if (abs >= 100) return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+      if (abs >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+      if (abs >= 0.001) return n.toLocaleString(undefined, { maximumFractionDigits: 8 });
+      return n.toExponential(6);
+    }
+
+    function calculate() {
+      var val = parseFloat(document.getElementById('inputVal').value);
+      if (isNaN(val)) val = 0;
+
+      var fromKey = document.getElementById('fromUnit').value;
+      var toKey = document.getElementById('toUnit').value;
+
+      // Main result
+      var result = convert(val, fromKey, toKey, currentCategory);
+      document.getElementById('outputVal').textContent = formatNumber(result);
+
+      // All conversions grid
+      var cat = categories[currentCategory];
+      var grid = document.getElementById('resultsGrid');
+      grid.innerHTML = '';
+
+      Object.keys(cat.units).forEach(function(key) {
+        var converted = convert(val, fromKey, key, currentCategory);
+        var u = cat.units[key];
+        var card = document.createElement('div');
+        card.className = 'result-card' + (key === toKey ? ' active-unit' : '');
+        card.innerHTML =
+          '<span class="result-value">' + formatNumber(converted) + '</span>' +
+          '<span class="result-unit">' + u.name + '</span>' +
+          '<span class="result-abbr">' + u.abbr + '</span>';
+        card.addEventListener('click', function() {
+          navigator.clipboard.writeText(formatNumber(converted)).then(function() {
+            showToast('Copied ' + formatNumber(converted) + ' ' + u.abbr);
+          });
+        });
+        grid.appendChild(card);
+      });
+    }
+
+    function swapUnits() {
+      var from = document.getElementById('fromUnit');
+      var to = document.getElementById('toUnit');
+      var tmp = from.value;
+      from.value = to.value;
+      to.value = tmp;
+      calculate();
+    }
+
+    function showToast(msg) {
+      var existing = document.querySelector('.copied-toast');
+      if (existing) existing.remove();
+      var toast = document.createElement('div');
+      toast.className = 'copied-toast';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(function() { toast.remove(); }, 2000);
+    }
+
+    // Event listeners
+    document.getElementById('inputVal').addEventListener('input', calculate);
+    document.getElementById('fromUnit').addEventListener('change', calculate);
+    document.getElementById('toUnit').addEventListener('change', calculate);
+
+    // Copy main result
+    function copyMainResult() {
+      var val = parseFloat(document.getElementById('inputVal').value);
+      if (isNaN(val)) val = 0;
+      var fromKey = document.getElementById('fromUnit').value;
+      var toKey = document.getElementById('toUnit').value;
+      var result = convert(val, fromKey, toKey, currentCategory);
+      var formatted = formatNumber(result);
+
+      navigator.clipboard.writeText(formatted).then(function() {
+        var u = categories[currentCategory].units[toKey];
+        showToast('Copied ' + formatted + ' ' + u.abbr);
+      });
+    }
+
+    document.getElementById('outputVal').addEventListener('click', copyMainResult);
+    document.getElementById('outputVal').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        copyMainResult();
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

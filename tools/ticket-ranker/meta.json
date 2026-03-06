@@ -1,0 +1,7 @@
+{
+  "name": "Ticket Ranker",
+  "description": "Prioritize tickets with pairwise comparisons using binary insertion sort",
+  "icon": "⚡",
+  "tag": "productivity",
+  "order": 1
+}

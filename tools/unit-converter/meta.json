@@ -1,0 +1,7 @@
+{
+  "name": "Unit Converter",
+  "description": "Convert time, data, bandwidth, frequency, power, temperature and more — built for IT",
+  "icon": "🔄",
+  "tag": "utility",
+  "order": 2
+}

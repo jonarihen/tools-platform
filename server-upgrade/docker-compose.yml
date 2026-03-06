@@ -1,0 +1,17 @@
+services:
+  tools:
+    build: .
+    container_name: tools-aaris
+    ports:
+      - "8080:80"
+    volumes:
+      - ./tools:/usr/share/nginx/html/tools:ro
+    depends_on:
+      - converter
+    restart: unless-stopped
+
+  converter:
+    build: ./converter-api
+    container_name: tools-converter
+    restart: unless-stopped
+    # No ports exposed — only accessible via nginx proxy

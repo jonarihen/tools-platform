@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Download Time Calculator – tools.aaris.tech</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: linear-gradient(160deg, #0c0c0f 0%, #141420 40%, #0f1118 100%);
+      font-family: 'Outfit', sans-serif;
+      color: #e8e8ed;
+    }
+
+    .container { max-width: 920px; margin: 0 auto; padding: 48px 24px 80px; }
+
+    .back {
+      display: inline-block; margin-bottom: 12px; font-size: 13px;
+      font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.2);
+      text-decoration: none; letter-spacing: 0.1em;
+    }
+
+    h1 {
+      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      text-align: center; margin-bottom: 8px;
+    }
+
+    .subtitle {
+      text-align: center; font-size: 16px;
+      color: rgba(255,255,255,0.45); font-weight: 300; margin-bottom: 28px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    @media (min-width: 860px) {
+      .grid { grid-template-columns: 1.1fr 0.9fr; gap: 16px; }
+    }
+
+    .panel {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      animation: fadeSlideIn 260ms ease-out both;
+    }
+
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .row { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+    @media (min-width: 560px) {
+      .row.two { grid-template-columns: 1fr 1fr; }
+      .row.three { grid-template-columns: 1fr 1fr 1fr; }
+    }
+
+    label {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.35);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    input[type="number"], select {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      color: #e8e8ed;
+      font-size: 15px;
+      font-family: 'Outfit', sans-serif;
+      outline: none;
+    }
+
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+    select { cursor: pointer; }
+
+    .hint {
+      margin-top: 8px;
+      color: rgba(255,255,255,0.35);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .btn-primary {
+      padding: 14px 18px;
+      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 14px;
+      color: #f59e0b;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-secondary {
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      color: rgba(255,255,255,0.65);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Outfit', sans-serif;
+      cursor: pointer;
+    }
+
+    .btn-secondary:hover, .btn-primary:hover {
+      border-color: rgba(255,255,255,0.15);
+      transform: translateY(-1px);
+      transition: transform 120ms ease, border-color 120ms ease;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.45);
+    }
+
+    .result {
+      margin-top: 10px;
+      padding: 16px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+
+    .result .big {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-top: 8px;
+    }
+
+    .result .big span {
+      color: #f59e0b;
+    }
+
+    .kv {
+      margin-top: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .kv .item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      font-size: 14px;
+    }
+
+    .kv .k { color: rgba(255,255,255,0.5); }
+    .kv .v { font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.85); }
+
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .footerNote {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.35);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      padding: 10px 14px;
+      background: rgba(20,20,32,0.92);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      color: rgba(255,255,255,0.8);
+      font-size: 13px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-4px);
+    }
+
+    .miniPresets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .chip {
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.7);
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .chip:hover {
+      border-color: rgba(255,255,255,0.15);
+      transform: translateY(-1px);
+      transition: transform 120ms ease, border-color 120ms ease;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <a href="/" class="back">← tools.aaris.tech</a>
+    <h1>Download Time Calculator</h1>
+    <p class="subtitle">Enter your speed and file size — get an instant time estimate (supports Mbps vs MB/s and GB vs GiB).</p>
+
+    <div class="grid">
+      <!-- Inputs -->
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div class="badge">Inputs</div>
+          <div class="badge" id="liveLabel">Live updating</div>
+        </div>
+
+        <div class="row two" style="margin-top:14px;">
+          <div>
+            <label for="speedVal">Download speed</label>
+            <input id="speedVal" type="number" inputmode="decimal" min="0" step="0.01" value="100">
+          </div>
+          <div>
+            <label for="speedUnit">Speed unit</label>
+            <select id="speedUnit">
+              <option value="kbps">Kbps (kilobits/s)</option>
+              <option value="Mbps" selected>Mbps (megabits/s)</option>
+              <option value="Gbps">Gbps (gigabits/s)</option>
+              <option value="Tbps">Tbps (terabits/s)</option>
+              <option value="kBps">kB/s (kilobytes/s)</option>
+              <option value="MBps">MB/s (megabytes/s)</option>
+              <option value="GBps">GB/s (gigabytes/s)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label for="sizeVal">File size</label>
+            <input id="sizeVal" type="number" inputmode="decimal" min="0" step="0.01" value="100">
+          </div>
+          <div>
+            <label for="sizeUnit">Size unit</label>
+            <select id="sizeUnit">
+              <option value="MB">MB (decimal)</option>
+              <option value="GB" selected>GB (decimal)</option>
+              <option value="TB">TB (decimal)</option>
+              <option value="MiB">MiB (binary)</option>
+              <option value="GiB">GiB (binary)</option>
+              <option value="TiB">TiB (binary)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label for="eff">Efficiency</label>
+            <input id="eff" type="number" inputmode="numeric" min="1" max="100" step="1" value="100">
+            <div class="hint">Real downloads are often <span class="mono">85–95%</span> of the advertised line speed due to overhead & Wi-Fi.</div>
+          </div>
+          <div>
+            <label for="rounding">Rounding</label>
+            <select id="rounding">
+              <option value="smart" selected>Smart (best looking)</option>
+              <option value="seconds">Show seconds</option>
+              <option value="minutes">Round to minutes</option>
+            </select>
+            <div class="hint">Pick how “precise” you want the displayed time to be.</div>
+          </div>
+        </div>
+
+        <div class="miniPresets">
+          <div class="chip" data-preset="100- Mbps-100-GB-100">100 Mbps • 100 GB</div>
+          <div class="chip" data-preset="1000-Mbps-100-GB-95">1 Gbps • 100 GB (95%)</div>
+          <div class="chip" data-preset="500-Mbps-1-TB-90">500 Mbps • 1 TB (90%)</div>
+          <div class="chip" data-preset="50-Mbps-20-GB-90">50 Mbps • 20 GB (90%)</div>
+        </div>
+
+        <div class="actions">
+          <button class="btn-primary" id="btnCopy">Copy result</button>
+          <button class="btn-secondary" id="btnShare">Copy share link</button>
+          <button class="btn-secondary" id="btnReset">Reset</button>
+        </div>
+
+        <div class="footerNote">
+          Notes:
+          <ul style="margin-top:8px; padding-left: 18px;">
+            <li><span class="mono">Mbps</span> = megabits per second. <span class="mono">MB/s</span> = megabytes per second (8× bigger than Mbps at the same number).</li>
+            <li><span class="mono">GB</span> uses decimal (1 GB = 1,000,000,000 bytes). <span class="mono">GiB</span> uses binary (1 GiB = 1,073,741,824 bytes).</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Output -->
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div class="badge">Result</div>
+          <div class="badge" id="statusBadge">Ready</div>
+        </div>
+
+        <div class="result" id="resultBox">
+          <div style="color: rgba(255,255,255,0.45); font-weight: 500;">
+            Estimated time
+          </div>
+          <div class="big" id="timeBig">—</div>
+
+          <div class="kv">
+            <div class="item">
+              <div class="k">Effective speed</div>
+              <div class="v" id="effSpeed">—</div>
+            </div>
+            <div class="item">
+              <div class="k">Total data (bits)</div>
+              <div class="v" id="bitsTotal">—</div>
+            </div>
+            <div class="item">
+              <div class="k">Formula</div>
+              <div class="v" id="formula">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footerNote" id="extraBreakdown"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Copied</div>
+
+  <script>
+    // --- Unit maps ---
+    const SPEED_TO_BPS = {
+      kbps: 1_000,
+      Mbps: 1_000_000,
+      Gbps: 1_000_000_000,
+      Tbps: 1_000_000_000_000,
+      kBps: 1_000 * 8,
+      MBps: 1_000_000 * 8,
+      GBps: 1_000_000_000 * 8
+    };
+
+    const SIZE_TO_BYTES = {
+      MB: 1_000_000,
+      GB: 1_000_000_000,
+      TB: 1_000_000_000_000,
+      MiB: 1_048_576,
+      GiB: 1_073_741_824,
+      TiB: 1_099_511_627_776
+    };
+
+    // --- DOM ---
+    const speedVal = document.getElementById('speedVal');
+    const speedUnit = document.getElementById('speedUnit');
+    const sizeVal = document.getElementById('sizeVal');
+    const sizeUnit = document.getElementById('sizeUnit');
+    const eff = document.getElementById('eff');
+    const rounding = document.getElementById('rounding');
+
+    const timeBig = document.getElementById('timeBig');
+    const effSpeed = document.getElementById('effSpeed');
+    const bitsTotal = document.getElementById('bitsTotal');
+    const formula = document.getElementById('formula');
+    const statusBadge = document.getElementById('statusBadge');
+    const extraBreakdown = document.getElementById('extraBreakdown');
+
+    const toast = document.getElementById('toast');
+    const btnCopy = document.getElementById('btnCopy');
+    const btnShare = document.getElementById('btnShare');
+    const btnReset = document.getElementById('btnReset');
+
+    function showToast(text) {
+      toast.textContent = text;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 1200);
+    }
+
+    function clamp(n, min, max) {
+      if (Number.isNaN(n)) return min;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    function fmtNumber(n) {
+      // compact-ish formatting for big integers
+      if (!Number.isFinite(n)) return '—';
+      const abs = Math.abs(n);
+      if (abs >= 1e12) return (n / 1e12).toFixed(3).replace(/\.?0+$/, '') + 'e12';
+      if (abs >= 1e9)  return (n / 1e9).toFixed(3).replace(/\.?0+$/, '') + 'e9';
+      if (abs >= 1e6)  return (n / 1e6).toFixed(3).replace(/\.?0+$/, '') + 'e6';
+      return Math.round(n).toString();
+    }
+
+    function formatDuration(seconds, mode) {
+      if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+
+      const s = Math.floor(seconds);
+      const days = Math.floor(s / 86400);
+      const hours = Math.floor((s % 86400) / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+
+      if (mode === 'minutes') {
+        const totalMinutes = Math.round(seconds / 60);
+        const d = Math.floor(totalMinutes / (24 * 60));
+        const h = Math.floor((totalMinutes % (24 * 60)) / 60);
+        const m = totalMinutes % 60;
+        const parts = [];
+        if (d) parts.push(`${d}d`);
+        if (h) parts.push(`${h}h`);
+        parts.push(`${m}m`);
+        return parts.join(' ');
+      }
+
+      if (mode === 'seconds') {
+        const parts = [];
+        if (days) parts.push(`${days}d`);
+        if (hours) parts.push(`${hours}h`);
+        if (mins) parts.push(`${mins}m`);
+        parts.push(`${secs}s`);
+        return parts.join(' ');
+      }
+
+      // smart
+      // show up to 3 parts, but keep it readable
+      const parts = [];
+      if (days) parts.push(`${days}d`);
+      if (hours) parts.push(`${hours}h`);
+      if (mins) parts.push(`${mins}m`);
+      if (!days && !hours) parts.push(`${secs}s`); // only show seconds when small-ish
+      return parts.slice(0, 3).join(' ');
+    }
+
+    function toQueryString() {
+      const params = new URLSearchParams();
+      params.set('speed', String(speedVal.value || ''));
+      params.set('speedUnit', speedUnit.value);
+      params.set('size', String(sizeVal.value || ''));
+      params.set('sizeUnit', sizeUnit.value);
+      params.set('eff', String(eff.value || ''));
+      params.set('round', rounding.value);
+      return params.toString();
+    }
+
+    function applyQueryString() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('speed')) speedVal.value = params.get('speed');
+      if (params.has('speedUnit')) speedUnit.value = params.get('speedUnit');
+      if (params.has('size')) sizeVal.value = params.get('size');
+      if (params.has('sizeUnit')) sizeUnit.value = params.get('sizeUnit');
+      if (params.has('eff')) eff.value = params.get('eff');
+      if (params.has('round')) rounding.value = params.get('round');
+    }
+
+    function calc() {
+      const speed = Number(speedVal.value);
+      const size = Number(sizeVal.value);
+      const effPct = clamp(Number(eff.value), 1, 100);
+
+      if (!Number.isFinite(speed) || speed <= 0 || !Number.isFinite(size) || size <= 0) {
+        statusBadge.textContent = 'Enter values';
+        timeBig.innerHTML = '—';
+        effSpeed.textContent = '—';
+        bitsTotal.textContent = '—';
+        formula.textContent = '—';
+        extraBreakdown.textContent = '';
+        return;
+      }
+
+      const bps = speed * (SPEED_TO_BPS[speedUnit.value] || 0);
+      const effectiveBps = bps * (effPct / 100);
+
+      const bytes = size * (SIZE_TO_BYTES[sizeUnit.value] || 0);
+      const bits = bytes * 8;
+
+      if (effectiveBps <= 0 || bits <= 0) {
+        statusBadge.textContent = 'Check units';
+        return;
+      }
+
+      const seconds = bits / effectiveBps;
+
+      // Display main time
+      const mode = rounding.value;
+      const pretty = formatDuration(seconds, mode);
+      timeBig.innerHTML = `<span>${pretty}</span>`;
+
+      // Effective speed display in both Mbps + MB/s for convenience
+      const effMbps = effectiveBps / 1_000_000;
+      const effMBps = effectiveBps / (8 * 1_000_000);
+      effSpeed.textContent = `${effMbps.toFixed(3).replace(/\.?0+$/, '')} Mbps  (${effMBps.toFixed(3).replace(/\.?0+$/, '')} MB/s)`;
+
+      bitsTotal.textContent = `${fmtNumber(bits)} bits`;
+      formula.textContent = `time = data ÷ speed`;
+
+      // Breakdown: exact seconds + a nicer sentence
+      const exact = seconds;
+      const hours = exact / 3600;
+      const mins = exact / 60;
+
+      statusBadge.textContent = 'Calculated';
+
+      extraBreakdown.innerHTML =
+        `At <span class="mono">${effPct}%</span> efficiency, that’s about <span class="mono">${hours.toFixed(4).replace(/\.?0+$/, '')} hours</span>
+         (${mins.toFixed(2).replace(/\.?0+$/, '')} minutes, ${Math.round(exact)} seconds).`;
+
+      // update URL (no reload)
+      const qs = toQueryString();
+      const newUrl = `${window.location.pathname}?${qs}`;
+      window.history.replaceState(null, '', newUrl);
+    }
+
+    // Copy result text
+    function getResultText() {
+      const speed = Number(speedVal.value);
+      const size = Number(sizeVal.value);
+      const effPct = clamp(Number(eff.value), 1, 100);
+      const pretty = timeBig.textContent.trim();
+
+      return `Download time estimate: ${pretty}\n` +
+        `Speed: ${speed} ${speedUnit.value} (${effPct}% efficiency)\n` +
+        `Size: ${size} ${sizeUnit.value}\n` +
+        `Link: ${window.location.href}`;
+    }
+
+    btnCopy.addEventListener('click', async () => {
+      const text = getResultText();
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Result copied');
+      } catch {
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('Result copied');
+      }
+    });
+
+    btnShare.addEventListener('click', async () => {
+      const qs = toQueryString();
+      const url = `${window.location.origin}${window.location.pathname}?${qs}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast('Share link copied');
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('Share link copied');
+      }
+    });
+
+    btnReset.addEventListener('click', () => {
+      speedVal.value = 100;
+      speedUnit.value = 'Mbps';
+      sizeVal.value = 100;
+      sizeUnit.value = 'GB';
+      eff.value = 100;
+      rounding.value = 'smart';
+      calc();
+      showToast('Reset');
+    });
+
+    // Presets
+    document.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const raw = chip.getAttribute('data-preset') || '';
+        // format: speed-speedUnit-size-sizeUnit-eff
+        // note: we allow "-" separators; speedUnit/sizeUnit may include letters only (no hyphen)
+        const parts = raw.split('-');
+        if (parts.length >= 5) {
+          speedVal.value = parts[0];
+          speedUnit.value = parts[1];
+          sizeVal.value = parts[2];
+          sizeUnit.value = parts[3];
+          eff.value = parts[4];
+          calc();
+          showToast('Preset applied');
+        }
+      });
+    });
+
+    // Live update
+    [speedVal, speedUnit, sizeVal, sizeUnit, eff, rounding].forEach(el => {
+      el.addEventListener('input', calc);
+      el.addEventListener('change', calc);
+    });
+
+    // Init
+    applyQueryString();
+    calc();
+  </script>
+</body>
+</html>

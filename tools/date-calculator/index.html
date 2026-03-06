@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Date Calculator – tools.aaris.tech</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root{
+      --bg0:#0c0c0f;
+      --bg1:#141420;
+      --bg2:#0f1118;
+
+      --text:#e8e8ed;
+      --muted: rgba(255,255,255,0.45);
+      --soft: rgba(255,255,255,0.75);
+      --faint: rgba(255,255,255,0.25);
+
+      --card: rgba(255,255,255,0.02);
+      --card2: rgba(255,255,255,0.04);
+      --border: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.12);
+
+      --amber:#f59e0b;
+      --amberBg: rgba(245,158,11,0.15);
+      --amberBorder: rgba(245,158,11,0.30);
+
+      --blue:#3b82f6;
+      --blueBg: rgba(59,130,246,0.12);
+      --blueBorder: rgba(59,130,246,0.25);
+
+      --danger:#ef4444;
+      --dangerBg: rgba(239,68,68,0.12);
+      --dangerBorder: rgba(239,68,68,0.25);
+    }
+
+    body{
+      min-height: 100vh;
+      background: linear-gradient(160deg, var(--bg0) 0%, var(--bg1) 40%, var(--bg2) 100%);
+      font-family: 'Outfit', sans-serif;
+      color: var(--text);
+    }
+
+    .container{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+      animation: fadeSlideIn 380ms ease-out both;
+    }
+
+    .back{
+      display: inline-block;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.2);
+      text-decoration: none;
+      letter-spacing: 0.1em;
+    }
+    .back:hover{ color: rgba(255,255,255,0.35); }
+
+    h1{
+      font-size: 40px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .subtitle{
+      text-align: center;
+      font-size: 16px;
+      color: rgba(255,255,255,0.45);
+      font-weight: 300;
+      margin-bottom: 26px;
+    }
+
+    .topRow{
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 26px;
+    }
+
+    .seg{
+      display: inline-flex;
+      gap: 6px;
+      padding: 6px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+
+    .seg button{
+      border: 1px solid transparent;
+      background: transparent;
+      color: rgba(255,255,255,0.6);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: 140ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .seg button:hover{
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.75);
+      border-color: rgba(255,255,255,0.10);
+    }
+
+    .seg button.active{
+      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
+      border-color: rgba(245,158,11,0.30);
+      color: var(--amber);
+    }
+
+    .grid{
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 920px){
+      .grid{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      padding: 18px;
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    }
+
+    .cardHeader{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .cardTitle{
+      font-size: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+    }
+
+    .tag{
+      font-size: 10px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.1em;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.5);
+      white-space: nowrap;
+    }
+
+    .formGrid{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 700px){
+      .formGrid{ grid-template-columns: 1fr; }
+    }
+
+    label{
+      display: block;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .row{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .inline2{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 520px){
+      .inline2{ grid-template-columns: 1fr; }
+    }
+
+    input[type="date"],
+    input[type="time"],
+    input[type="number"],
+    select{
+      width: 100%;
+      padding: 14px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 15px;
+      font-family: 'Outfit', sans-serif;
+      outline: none;
+      transition: 140ms ease;
+    }
+
+    /* Help dropdown contrast issues on some browsers */
+    select option{
+      background: #10111a;
+      color: #e8e8ed;
+    }
+
+    input:focus, select:focus{
+      border-color: rgba(245,158,11,0.35);
+      box-shadow: 0 0 0 4px rgba(245,158,11,0.08);
+    }
+
+    .btnRow{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .btn{
+      border-radius: 14px;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
+      color: rgba(255,255,255,0.7);
+      padding: 12px 14px;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      transition: 140ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    .btn:hover{
+      border-color: rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.82);
+      transform: translateY(-1px);
+    }
+
+    .btnPrimary{
+      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
+      border: 1px solid rgba(245,158,11,0.30);
+      color: var(--amber);
+    }
+    .btnPrimary:hover{
+      border-color: rgba(245,158,11,0.42);
+      background: linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.06));
+    }
+
+    .btnBlue{
+      background: linear-gradient(135deg, rgba(59,130,246,0.14), rgba(59,130,246,0.05));
+      border: 1px solid rgba(59,130,246,0.25);
+      color: var(--blue);
+    }
+
+    .btnDanger{
+      background: linear-gradient(135deg, rgba(239,68,68,0.14), rgba(239,68,68,0.05));
+      border: 1px solid rgba(239,68,68,0.25);
+      color: var(--danger);
+    }
+
+    .toggles{
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .toggle{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .toggle .left{
+      display: grid;
+      gap: 4px;
+    }
+
+    .toggle .name{
+      font-weight: 600;
+      color: rgba(255,255,255,0.78);
+      font-size: 14px;
+    }
+    .toggle .hint{
+      color: rgba(255,255,255,0.40);
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.04em;
+    }
+
+    .switch{
+      position: relative;
+      width: 48px;
+      height: 28px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.05);
+      cursor: pointer;
+      flex: 0 0 auto;
+      transition: 160ms ease;
+    }
+    .switch::after{
+      content:"";
+      position:absolute;
+      top: 3px;
+      left: 3px;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.65);
+      transition: 160ms ease;
+    }
+    .switch.on{
+      background: rgba(245,158,11,0.12);
+      border-color: rgba(245,158,11,0.35);
+    }
+    .switch.on::after{
+      left: 23px;
+      background: rgba(245,158,11,0.95);
+    }
+
+    .resultBig{
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+      line-height: 1.1;
+      word-break: break-word;
+    }
+
+    .resultSub{
+      color: rgba(255,255,255,0.5);
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.04em;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .mono{
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .notice{
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.55);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .warn{
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(239,68,68,0.10);
+      border: 1px solid rgba(239,68,68,0.22);
+      color: rgba(255,255,255,0.85);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .toast{
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 20px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(0,0,0,0.55);
+      color: rgba(255,255,255,0.85);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      opacity: 0;
+      pointer-events: none;
+      transition: 220ms ease;
+    }
+    .toast.show{
+      opacity: 1;
+      transform: translateX(-50%) translateY(-4px);
+    }
+
+    .hidden{ display:none !important; }
+
+    @keyframes fadeSlideIn{
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <a href="/" class="back">← tools.aaris.tech</a>
+
+    <h1>Date Calculator</h1>
+    <p class="subtitle">Add/subtract time from a date, or calculate the difference between two dates (perfect for “days since…”).</p>
+
+    <div class="topRow">
+      <div class="seg" role="tablist" aria-label="Mode switch">
+        <button id="tabDiff" class="active" type="button" role="tab" aria-selected="true">↔ Difference</button>
+        <button id="tabAdd" type="button" role="tab" aria-selected="false">➕ Add / Subtract</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- LEFT: Inputs -->
+      <div class="card">
+        <div class="cardHeader">
+          <div class="cardTitle" id="inputsTitle">Difference Inputs</div>
+          <div class="tag" id="modeTag">DIFF</div>
+        </div>
+
+        <!-- Difference mode -->
+        <div id="panelDiff">
+          <div class="formGrid">
+            <div class="row">
+              <label for="diffA">Start date</label>
+              <div class="inline2">
+                <input id="diffA" type="date" />
+                <input id="diffATime" type="time" step="60" />
+              </div>
+            </div>
+
+            <div class="row">
+              <label for="diffB">End date</label>
+              <div class="inline2">
+                <input id="diffB" type="date" />
+                <input id="diffBTime" type="time" step="60" />
+              </div>
+            </div>
+          </div>
+
+          <div class="btnRow">
+            <button class="btn btnBlue" id="btnSwap" type="button">⇄ Swap</button>
+            <button class="btn" id="btnTodayEnd" type="button">📍 End = Today</button>
+            <button class="btn" id="btnTodayStart" type="button">📍 Start = Today</button>
+            <button class="btn btnDanger" id="btnClearDiff" type="button">✕ Clear</button>
+          </div>
+
+          <div class="toggles">
+            <div class="toggle">
+              <div class="left">
+                <div class="name">Include time</div>
+                <div class="hint">Uses time fields + shows hours/minutes</div>
+              </div>
+              <div class="switch" id="swIncludeTime" role="switch" aria-checked="false" tabindex="0"></div>
+            </div>
+
+            <div class="toggle">
+              <div class="left">
+                <div class="name">Inclusive day count</div>
+                <div class="hint">Date-only mode: same date = 1 day</div>
+              </div>
+              <div class="switch" id="swInclusive" role="switch" aria-checked="false" tabindex="0"></div>
+            </div>
+
+            <div class="toggle">
+              <div class="left">
+                <div class="name">Absolute difference</div>
+                <div class="hint">Always positive (ignores direction)</div>
+              </div>
+              <div class="switch" id="swAbsolute" role="switch" aria-checked="true" tabindex="0"></div>
+            </div>
+          </div>
+
+          <div class="notice">
+            Tip: for “how many days since …” set Start to your date, then press <span class="mono">End = Today</span>.
+          </div>
+        </div>
+
+        <!-- Add/Subtract mode -->
+        <div id="panelAdd" class="hidden">
+          <div class="formGrid">
+            <div class="row">
+              <label for="baseDate">Base date</label>
+              <div class="inline2">
+                <input id="baseDate" type="date" />
+                <input id="baseTime" type="time" step="60" />
+              </div>
+            </div>
+
+            <div class="row">
+              <label for="amount">Amount</label>
+              <div class="inline2">
+                <input id="amount" type="number" inputmode="numeric" placeholder="e.g. 14" />
+                <select id="unit">
+                  <option value="minutes">Minutes</option>
+                  <option value="hours">Hours</option>
+                  <option value="days" selected>Days</option>
+                  <option value="weeks">Weeks</option>
+                  <option value="months">Months</option>
+                  <option value="years">Years</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="btnRow">
+            <button class="btn btnPrimary" id="btnAdd" type="button">➕ Add</button>
+            <button class="btn btnBlue" id="btnSub" type="button">➖ Subtract</button>
+            <button class="btn" id="btnNowBase" type="button">🕒 Base = Now</button>
+            <button class="btn btnDanger" id="btnClearAdd" type="button">✕ Clear</button>
+          </div>
+
+          <div class="toggles">
+            <div class="toggle">
+              <div class="left">
+                <div class="name">Include time</div>
+                <div class="hint">Uses base time field + preserves time</div>
+              </div>
+              <div class="switch on" id="swIncludeTimeAdd" role="switch" aria-checked="true" tabindex="0"></div>
+            </div>
+          </div>
+
+          <div class="notice">
+            Months/years are “calendar aware” (end-of-month clamps, e.g. Jan 31 + 1 month → Feb 28/29).
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Results -->
+      <div class="card">
+        <div class="cardHeader">
+          <div class="cardTitle">Result</div>
+          <div class="tag" id="resultTag">LIVE</div>
+        </div>
+
+        <div id="resultArea">
+          <div class="resultBig" id="resultBig">—</div>
+          <div class="resultSub" id="resultSub">Fill in the fields to see a result.</div>
+
+          <div class="btnRow" style="margin-top: 16px;">
+            <button class="btn btnPrimary" id="btnCopy" type="button">📋 Copy</button>
+          </div>
+
+          <div id="warnBox" class="warn hidden"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">COPIED</div>
+
+  <script>
+    // ---------- Helpers ----------
+    const $ = (id) => document.getElementById(id);
+
+    function pad2(n){ return String(n).padStart(2, "0"); }
+
+    function todayYMD(){
+      const d = new Date();
+      return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+    }
+
+    function nowHM(){
+      const d = new Date();
+      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+
+    function parseYMD(ymd){
+      // ymd: "YYYY-MM-DD"
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || "");
+      if(!m) return null;
+      return { y: +m[1], mo: +m[2], d: +m[3] };
+    }
+
+    function parseHM(hm){
+      // hm: "HH:MM"
+      const m = /^(\d{2}):(\d{2})$/.exec(hm || "");
+      if(!m) return null;
+      return { h: +m[1], mi: +m[2] };
+    }
+
+    function daysInMonth(y, mo){
+      // mo: 1..12
+      return new Date(y, mo, 0).getDate();
+    }
+
+    function clampDay(y, mo, d){
+      return Math.min(d, daysInMonth(y, mo));
+    }
+
+    function formatLocal(date){
+      try{
+        return date.toLocaleString(undefined, {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+      }catch{
+        return date.toString();
+      }
+    }
+
+    function showToast(text){
+      const t = $("toast");
+      t.textContent = text || "COPIED";
+      t.classList.add("show");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => t.classList.remove("show"), 900);
+    }
+
+    function setSwitch(sw, on){
+      sw.classList.toggle("on", !!on);
+      sw.setAttribute("aria-checked", on ? "true" : "false");
+    }
+    function getSwitch(sw){ return sw.classList.contains("on"); }
+
+    function toggleSwitch(sw){
+      setSwitch(sw, !getSwitch(sw));
+    }
+
+    function safeNumber(x){
+      const n = Number(x);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    // ---------- Date-only math (UTC-based, stable for “calendar days”) ----------
+    function dateOnlyToUtcMs(ymd){
+      const p = parseYMD(ymd);
+      if(!p) return null;
+      return Date.UTC(p.y, p.mo-1, p.d);
+    }
+
+    function addDateOnly(ymd, amount, unit){
+      const p = parseYMD(ymd);
+      if(!p) return null;
+
+      const amt = Number(amount);
+      if(!Number.isFinite(amt)) return null;
+
+      let y = p.y, mo = p.mo, d = p.d;
+
+      if(unit === "days" || unit === "weeks"){
+        const deltaDays = unit === "weeks" ? amt * 7 : amt;
+        const base = Date.UTC(y, mo-1, d);
+        const ms = base + (deltaDays * 86400000);
+        const nd = new Date(ms);
+        return `${nd.getUTCFullYear()}-${pad2(nd.getUTCMonth()+1)}-${pad2(nd.getUTCDate())}`;
+      }
+
+      if(unit === "months"){
+        const total = (y * 12 + (mo - 1)) + amt;
+        const ny = Math.floor(total / 12);
+        const nmo0 = ((total % 12) + 12) % 12; // 0..11
+        const nmo = nmo0 + 1;
+        const nd = clampDay(ny, nmo, d);
+        return `${ny}-${pad2(nmo)}-${pad2(nd)}`;
+      }
+
+      if(unit === "years"){
+        const ny = y + amt;
+        const nd = clampDay(ny, mo, d);
+        return `${ny}-${pad2(mo)}-${pad2(nd)}`;
+      }
+
+      // minutes/hours not supported in date-only add
+      return null;
+    }
+
+    // ---------- Date+time math (local Date object) ----------
+    function parseLocalDateTime(dateStr, timeStr, includeTime){
+      const p = parseYMD(dateStr);
+      if(!p) return null;
+      if(!includeTime){
+        // Use local midnight for display consistency; diff uses date-only UTC anyway when includeTime is off.
+        return new Date(p.y, p.mo-1, p.d, 0, 0, 0, 0);
+      }
+      const t = parseHM(timeStr || "00:00") || { h: 0, mi: 0 };
+      return new Date(p.y, p.mo-1, p.d, t.h, t.mi, 0, 0);
+    }
+
+    function addMonthsLocal(date, months){
+      const d = new Date(date.getTime());
+      const day = d.getDate();
+      d.setDate(1);
+      d.setMonth(d.getMonth() + months);
+      const max = daysInMonth(d.getFullYear(), d.getMonth()+1);
+      d.setDate(Math.min(day, max));
+      return d;
+    }
+
+    function addYearsLocal(date, years){
+      const d = new Date(date.getTime());
+      const mo = d.getMonth();
+      const day = d.getDate();
+      d.setDate(1);
+      d.setFullYear(d.getFullYear() + years);
+      d.setMonth(mo);
+      const max = daysInMonth(d.getFullYear(), d.getMonth()+1);
+      d.setDate(Math.min(day, max));
+      return d;
+    }
+
+    function addLocal(date, amount, unit){
+      const amt = Number(amount);
+      if(!Number.isFinite(amt)) return null;
+
+      if(unit === "minutes") return new Date(date.getTime() + amt * 60000);
+      if(unit === "hours") return new Date(date.getTime() + amt * 3600000);
+      if(unit === "days") return new Date(date.getTime() + amt * 86400000);
+      if(unit === "weeks") return new Date(date.getTime() + amt * 7 * 86400000);
+      if(unit === "months") return addMonthsLocal(date, amt);
+      if(unit === "years") return addYearsLocal(date, amt);
+      return null;
+    }
+
+    function breakdownMs(ms){
+      const sign = ms < 0 ? -1 : 1;
+      let x = Math.abs(ms);
+
+      const sec = Math.floor(x / 1000); x -= sec * 1000;
+
+      const totalSeconds = sec;
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+
+      const days = Math.floor(hours / 24);
+      const hrs = hours % 24;
+
+      return { sign, days, hours: hrs, minutes: mins, seconds };
+    }
+
+    function plural(n, word){
+      return `${n} ${word}${Math.abs(n) === 1 ? "" : "s"}`;
+    }
+
+    // ---------- State ----------
+    const state = {
+      mode: "diff",
+      lastCopy: ""
+    };
+
+    // ---------- Elements ----------
+    const tabDiff = $("tabDiff");
+    const tabAdd = $("tabAdd");
+
+    const panelDiff = $("panelDiff");
+    const panelAdd = $("panelAdd");
+
+    const inputsTitle = $("inputsTitle");
+    const modeTag = $("modeTag");
+
+    const diffA = $("diffA");
+    const diffATime = $("diffATime");
+    const diffB = $("diffB");
+    const diffBTime = $("diffBTime");
+
+    const swIncludeTime = $("swIncludeTime");
+    const swInclusive = $("swInclusive");
+    const swAbsolute = $("swAbsolute");
+
+    const btnSwap = $("btnSwap");
+    const btnTodayEnd = $("btnTodayEnd");
+    const btnTodayStart = $("btnTodayStart");
+    const btnClearDiff = $("btnClearDiff");
+
+    const baseDate = $("baseDate");
+    const baseTime = $("baseTime");
+    const amount = $("amount");
+    const unit = $("unit");
+
+    const btnAdd = $("btnAdd");
+    const btnSub = $("btnSub");
+    const btnNowBase = $("btnNowBase");
+    const btnClearAdd = $("btnClearAdd");
+    const swIncludeTimeAdd = $("swIncludeTimeAdd");
+
+    const resultBig = $("resultBig");
+    const resultSub = $("resultSub");
+    const warnBox = $("warnBox");
+    const btnCopy = $("btnCopy");
+
+    // ---------- Mode switching ----------
+    function setMode(mode){
+      state.mode = mode;
+
+      const isDiff = mode === "diff";
+      tabDiff.classList.toggle("active", isDiff);
+      tabAdd.classList.toggle("active", !isDiff);
+      tabDiff.setAttribute("aria-selected", isDiff ? "true" : "false");
+      tabAdd.setAttribute("aria-selected", !isDiff ? "true" : "false");
+
+      panelDiff.classList.toggle("hidden", !isDiff);
+      panelAdd.classList.toggle("hidden", isDiff);
+
+      inputsTitle.textContent = isDiff ? "Difference Inputs" : "Add / Subtract Inputs";
+      modeTag.textContent = isDiff ? "DIFF" : "ADD";
+
+      update();
+    }
+
+    tabDiff.addEventListener("click", () => setMode("diff"));
+    tabAdd.addEventListener("click", () => setMode("add"));
+
+    // ---------- UI handlers ----------
+    function setWarn(msg){
+      if(!msg){
+        warnBox.classList.add("hidden");
+        warnBox.textContent = "";
+        return;
+      }
+      warnBox.classList.remove("hidden");
+      warnBox.textContent = msg;
+    }
+
+    function copyText(text){
+      if(!text) return;
+      navigator.clipboard?.writeText(text).then(() => showToast("COPIED"), () => showToast("COPY FAILED"));
+    }
+
+    btnCopy.addEventListener("click", () => copyText(state.lastCopy));
+
+    function hookSwitch(sw){
+      const onToggle = () => { toggleSwitch(sw); update(); };
+      sw.addEventListener("click", onToggle);
+      sw.addEventListener("keydown", (e) => {
+        if(e.key === " " || e.key === "Enter"){
+          e.preventDefault();
+          onToggle();
+        }
+      });
+    }
+
+    hookSwitch(swIncludeTime);
+    hookSwitch(swInclusive);
+    hookSwitch(swAbsolute);
+    hookSwitch(swIncludeTimeAdd);
+
+    btnSwap.addEventListener("click", () => {
+      [diffA.value, diffB.value] = [diffB.value, diffA.value];
+      [diffATime.value, diffBTime.value] = [diffBTime.value, diffATime.value];
+      update();
+    });
+
+    btnTodayEnd.addEventListener("click", () => {
+      diffB.value = todayYMD();
+      if(getSwitch(swIncludeTime)) diffBTime.value = nowHM();
+      update();
+    });
+
+    btnTodayStart.addEventListener("click", () => {
+      diffA.value = todayYMD();
+      if(getSwitch(swIncludeTime)) diffATime.value = nowHM();
+      update();
+    });
+
+    btnClearDiff.addEventListener("click", () => {
+      diffA.value = "";
+      diffB.value = "";
+      diffATime.value = "";
+      diffBTime.value = "";
+      update();
+    });
+
+    btnNowBase.addEventListener("click", () => {
+      baseDate.value = todayYMD();
+      baseTime.value = nowHM();
+      update();
+    });
+
+    btnClearAdd.addEventListener("click", () => {
+      baseDate.value = "";
+      baseTime.value = "";
+      amount.value = "";
+      unit.value = "days";
+      setSwitch(swIncludeTimeAdd, true);
+      update();
+    });
+
+    // Add/Sub buttons
+    function runAddSubtract(direction){
+      // direction: +1 add, -1 subtract
+      const includeTime = getSwitch(swIncludeTimeAdd);
+      const base = parseLocalDateTime(baseDate.value, baseTime.value, includeTime);
+      const amt = safeNumber(amount.value);
+      if(!base || amt === null){
+        update();
+        return;
+      }
+
+      const u = unit.value;
+      const effective = amt * direction;
+
+      // If time is off, do date-only for calendar-safe behavior (including months/years)
+      if(!includeTime && (u === "days" || u === "weeks" || u === "months" || u === "years")){
+        const out = addDateOnly(baseDate.value, effective, u);
+        if(!out){
+          update();
+          return;
+        }
+        // Store a one-off "computed result" in state by populating fields (so live calc shows it)
+        // We'll just compute and display directly:
+        const text = `Result: ${out}\nBase: ${baseDate.value}\nOperation: ${direction > 0 ? "Add" : "Subtract"} ${amt} ${u}`;
+        resultBig.textContent = out;
+        resultSub.textContent = text;
+        state.lastCopy = out;
+        setWarn("");
+        return;
+      }
+
+      const outDate = addLocal(base, effective, u);
+      if(!outDate){
+        update();
+        return;
+      }
+
+      const ymd = `${outDate.getFullYear()}-${pad2(outDate.getMonth()+1)}-${pad2(outDate.getDate())}`;
+      const hm = `${pad2(outDate.getHours())}:${pad2(outDate.getMinutes())}`;
+      const shown = includeTime ? `${ymd} ${hm}` : ymd;
+
+      resultBig.textContent = shown;
+      resultSub.textContent =
+        `Base: ${includeTime ? (baseDate.value + " " + (baseTime.value || "00:00")) : baseDate.value}\n` +
+        `Operation: ${direction > 0 ? "Add" : "Subtract"} ${amt} ${u}\n` +
+        `Local: ${formatLocal(outDate)}\n` +
+        `ISO: ${outDate.toISOString()}`;
+
+      state.lastCopy = shown;
+      setWarn("");
+    }
+
+    btnAdd.addEventListener("click", () => runAddSubtract(+1));
+    btnSub.addEventListener("click", () => runAddSubtract(-1));
+
+    // Live update on inputs
+    const liveInputs = [
+      diffA, diffATime, diffB, diffBTime,
+      baseDate, baseTime, amount, unit
+    ];
+    liveInputs.forEach(el => el.addEventListener("input", update));
+    liveInputs.forEach(el => el.addEventListener("change", update));
+
+    // ---------- Core update ----------
+    function update(){
+      setWarn("");
+
+      if(state.mode === "diff"){
+        const includeTime = getSwitch(swIncludeTime);
+        const inclusive = getSwitch(swInclusive);
+        const absolute = getSwitch(swAbsolute);
+
+        // Show/hide time fields
+        diffATime.parentElement.classList.toggle("hidden", false);
+        diffBTime.parentElement.classList.toggle("hidden", false);
+        diffATime.classList.toggle("hidden", !includeTime);
+        diffBTime.classList.toggle("hidden", !includeTime);
+
+        const aStr = diffA.value;
+        const bStr = diffB.value;
+
+        if(!aStr || !bStr){
+          resultBig.textContent = "—";
+          resultSub.textContent = "Pick a start and end date to see the difference.";
+          state.lastCopy = "";
+          return;
+        }
+
+        if(includeTime){
+          const a = parseLocalDateTime(aStr, diffATime.value, true);
+          const b = parseLocalDateTime(bStr, diffBTime.value, true);
+          if(!a || !b){
+            resultBig.textContent = "—";
+            resultSub.textContent = "Invalid date/time input.";
+            state.lastCopy = "";
+            return;
+          }
+
+          let diffMs = b.getTime() - a.getTime();
+          if(absolute) diffMs = Math.abs(diffMs);
+
+          const totalDays = diffMs / 86400000;
+          const totalHours = diffMs / 3600000;
+          const totalMinutes = diffMs / 60000;
+
+          const br = breakdownMs(diffMs);
+
+          const signPrefix = (!absolute && (b.getTime() - a.getTime()) < 0) ? "-" : "";
+          const daysPretty = `${signPrefix}${Math.abs(totalDays).toFixed(6)} days`;
+
+          resultBig.textContent = daysPretty;
+
+          resultSub.textContent =
+            `Total:\n` +
+            `  ${signPrefix}${Math.abs(totalHours).toFixed(3)} hours\n` +
+            `  ${signPrefix}${Math.abs(totalMinutes).toFixed(0)} minutes\n\n` +
+            `Breakdown:\n` +
+            `  ${signPrefix}${plural(br.days, "day")}, ${plural(br.hours, "hour")}, ${plural(br.minutes, "minute")}, ${plural(br.seconds, "second")}\n\n` +
+            `Start (local): ${formatLocal(a)}\n` +
+            `End (local):   ${formatLocal(b)}`;
+
+          state.lastCopy = daysPretty;
+          return;
+        }
+
+        // Date-only difference: use UTC midnight to avoid DST weirdness for “days”
+        const aMs = dateOnlyToUtcMs(aStr);
+        const bMs = dateOnlyToUtcMs(bStr);
+        if(aMs === null || bMs === null){
+          resultBig.textContent = "—";
+          resultSub.textContent = "Invalid date input.";
+          state.lastCopy = "";
+          return;
+        }
+
+        let diffDays = (bMs - aMs) / 86400000; // can be negative
+        if(inclusive){
+          if(diffDays >= 0) diffDays += 1;
+          else diffDays -= 1;
+        }
+        if(absolute) diffDays = Math.abs(diffDays);
+
+        const pretty = Number.isInteger(diffDays) ? `${diffDays} days` : `${diffDays.toFixed(2)} days`;
+
+        // Also show direction if not absolute
+        const raw = (bMs - aMs) / 86400000;
+        const dir =
+          (raw === 0) ? "Same date" :
+          (raw > 0) ? "End is after Start" :
+                      "End is before Start";
+
+        resultBig.textContent = pretty;
+        resultSub.textContent =
+          `Calendar day difference (date-only, UTC-stable)\n` +
+          `Start: ${aStr}\n` +
+          `End:   ${bStr}\n` +
+          `Mode:  ${inclusive ? "Inclusive" : "Exclusive"}${absolute ? ", Absolute" : ""}\n` +
+          `Info:  ${absolute ? "Direction ignored" : dir}`;
+
+        state.lastCopy = pretty;
+        return;
+      }
+
+      // Add/Subtract (live preview)
+      const includeTime = getSwitch(swIncludeTimeAdd);
+      baseTime.classList.toggle("hidden", !includeTime);
+
+      const bd = baseDate.value;
+      const amt = safeNumber(amount.value);
+      const u = unit.value;
+
+      if(!bd || amt === null){
+        resultBig.textContent = "—";
+        resultSub.textContent = "Set a base date and an amount. Then click Add or Subtract.";
+        state.lastCopy = "";
+        return;
+      }
+
+      // Provide a live *preview* (assume Add) so it feels responsive
+      // but buttons still do the real thing (and can subtract).
+      if(!includeTime && (u === "days" || u === "weeks" || u === "months" || u === "years")){
+        const out = addDateOnly(bd, amt, u);
+        if(!out){
+          resultBig.textContent = "—";
+          resultSub.textContent = "Invalid input for calendar math.";
+          state.lastCopy = "";
+          return;
+        }
+        resultBig.textContent = out;
+        resultSub.textContent =
+          `Preview (Add): ${amt} ${u}\n` +
+          `Base: ${bd}\n` +
+          `Note: Click Subtract to go backwards.`;
+        state.lastCopy = out;
+        return;
+      }
+
+      const base = parseLocalDateTime(bd, baseTime.value, includeTime);
+      if(!base){
+        resultBig.textContent = "—";
+        resultSub.textContent = "Invalid base date/time.";
+        state.lastCopy = "";
+        return;
+      }
+
+      const outDate = addLocal(base, amt, u);
+      if(!outDate){
+        resultBig.textContent = "—";
+        resultSub.textContent = "Could not compute result.";
+        state.lastCopy = "";
+        return;
+      }
+
+      const ymd = `${outDate.getFullYear()}-${pad2(outDate.getMonth()+1)}-${pad2(outDate.getDate())}`;
+      const hm = `${pad2(outDate.getHours())}:${pad2(outDate.getMinutes())}`;
+      const shown = includeTime ? `${ymd} ${hm}` : ymd;
+
+      resultBig.textContent = shown;
+      resultSub.textContent =
+        `Preview (Add): ${amt} ${u}\n` +
+        `Base (local): ${formatLocal(base)}\n` +
+        `Result (local): ${formatLocal(outDate)}`;
+
+      state.lastCopy = shown;
+    }
+
+    // ---------- Init defaults ----------
+    // Good defaults for “days since…”
+    diffB.value = todayYMD();
+    setSwitch(swAbsolute, true);
+    setSwitch(swIncludeTime, false);
+    setSwitch(swInclusive, false);
+
+    // Add mode defaults
+    setSwitch(swIncludeTimeAdd, true);
+
+    update();
+  </script>
+</body>
+</html>
