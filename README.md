@@ -1,76 +1,167 @@
+<div align="center">
+
 # tools.aaris.tech
 
-A modular collection of everyday web tools. Each tool is a self-contained folder — add a new one without touching docker-compose.
+**A self-hosted collection of web-based utilities** — clean, fast, no sign-up required.
+
+Built with vanilla HTML/CSS/JS on the frontend and a Flask API on the backend,<br>
+served through Nginx and Docker Compose.
+
+[Live Site](https://tools.aaris.tech) · [Changelog](CHANGELOG.md)
+
+</div>
+
+---
+
+## Tools
+
+| Tool | Description | Tag |
+|------|-------------|-----|
+| **Text Fixer** | Fix spelling and grammar with AI — powered by Llama 3.1 | `ai` |
+| **EPUB to PDF** | High-quality ebook conversion via Calibre with progress tracking | `converter` |
+| **File Share** | Upload a file, get a shareable link — auto-deleted on expiry | `share` |
+| **JSON Formatter** | Paste messy JSON and get it pretty-printed instantly | `dev` |
+| **Unit Converter** | Convert time, data, bandwidth, frequency, power, temperature and more | `utility` |
+| **Date Calculator** | Add/subtract time from a date, or find the difference between two | `utility` |
+| **Download Time Calculator** | Estimate download duration based on speed and file size | `utility` |
+| **Ticket Ranker** | Prioritize tickets with pairwise comparisons | `productivity` |
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Browser                                             │
+└──────────────┬───────────────────────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────────────────────┐
+│  Nginx (tools container)              port 8080 → 80 │
+│  ├── /              → static landing page            │
+│  ├── /tools/*       → static tool HTML/CSS/JS        │
+│  ├── /manifest.json → auto-generated tool list       │
+│  └── /api/*         → proxy to converter:5000        │
+└──────────────┬───────────────────────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────────────────────┐
+│  Flask / Gunicorn (converter container)   port 5000  │
+│  ├── POST /api/fix-text          → Ollama (ai-01)   │
+│  ├── POST /api/convert/epub-to-pdf → Calibre         │
+│  ├── POST /api/share/upload      → SQLite + disk     │
+│  ├── GET  /api/share/<key>/info                      │
+│  ├── POST /api/share/<key>/download                  │
+│  └── GET  /api/health                                │
+└──────────────┬───────────────────────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────────────────────┐
+│  Ollama — ai-01 (10.10.8.10:11434)                   │
+│  └── llama3.1 (8B, Q4_K_M) on Tesla M10 GPU         │
+└──────────────────────────────────────────────────────┘
+```
 
 ## Quick Start
 
 ```bash
-docker compose up -d --build
+git clone git@github.com:jonarihen/tools-platform.git
+cd tools-platform
+docker compose up --build -d
 ```
 
-Open `http://localhost:8080` (or your domain).
+The platform is available at **http://localhost:8080**.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OLLAMA_URL` | `http://10.10.8.10:11434` | Ollama API endpoint for the Text Fixer tool |
+| `OLLAMA_MODEL` | `llama3.1` | Model to use for text correction |
+
+Set these in `docker-compose.yml` under the `converter` service environment.
+
+## Project Structure
+
+```
+tools-platform/
+├── docker-compose.yml
+├── Dockerfile                 # Nginx + entrypoint
+├── entrypoint.sh              # Auto-discovers tools → manifest.json
+├── nginx.conf
+├── public/
+│   ├── index.html             # Landing page (reads manifest.json)
+│   ├── style.css              # Shared design system
+│   └── favicon.svg
+├── converter-api/
+│   ├── Dockerfile             # Python 3.12 + Calibre + Gunicorn
+│   ├── app.py                 # Flask API (conversion, file share, text fixer)
+│   └── requirements.txt
+└── tools/                     # Each tool is a self-contained directory
+    ├── text-fixer/
+    ├── epub-to-pdf/
+    ├── file-share/
+    ├── json-formatter/
+    ├── unit-converter/
+    ├── date-calculator/
+    ├── download-time-calculator/
+    ├── ticket-ranker/
+    └── add-tool-guide/
+```
 
 ## Adding a New Tool
 
-1. Create a folder inside `tools/`:
+Each tool lives in its own directory under `tools/`:
 
 ```
-tools/
-  my-new-tool/
-    meta.json
-    index.html
+tools/my-tool/
+├── index.html    ← self-contained frontend (HTML + CSS + JS)
+└── meta.json     ← metadata for the platform
 ```
 
-2. Create `meta.json`:
+**meta.json:**
 
 ```json
 {
-  "name": "My New Tool",
-  "description": "What this tool does",
+  "name": "My Tool",
+  "description": "What it does in one sentence",
   "icon": "🔧",
   "tag": "utility",
   "order": 10
 }
 ```
 
-| Field         | Required | Description                                  |
-|---------------|----------|----------------------------------------------|
-| `name`        | ✅       | Display name on the homepage                 |
-| `description` | ✅       | Short description shown on the card          |
-| `icon`        | ❌       | Emoji icon (defaults to 🔧)                  |
-| `tag`         | ❌       | Category label shown on the card             |
-| `order`       | ❌       | Sort order on homepage (lower = first)        |
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name on the homepage |
+| `description` | Yes | Short description shown on the card |
+| `icon` | No | Emoji icon (defaults to 🔧) |
+| `tag` | No | Category label shown on the card |
+| `order` | No | Sort order on homepage (lower = first) |
 
-3. Create `index.html` — your tool as a self-contained page. Use CDN imports for any libraries you need.
+The `entrypoint.sh` script auto-discovers all tools and generates `manifest.json` on container startup — no other files need to change. Just add the directory, rebuild, and it appears on the landing page.
 
-4. Restart the container:
+The `tools/` directory is volume-mounted, so you can edit tool files without rebuilding the image. Only the manifest regeneration requires a restart.
 
-```bash
-docker compose restart
-```
+A full guide is available at `/tools/add-tool-guide/` on the live site.
 
-The entrypoint script scans `tools/*/meta.json` on every startup and regenerates the homepage manifest automatically.
+## Security
 
-## Structure
+The platform is hardened for public-facing deployment:
 
-```
-tools-platform/
-├── docker-compose.yml
-├── Dockerfile
-├── entrypoint.sh          # Scans tools/ and generates manifest.json
-├── nginx.conf
-├── public/
-│   └── index.html         # Homepage — reads manifest.json
-└── tools/                  # ← Your tools go here (volume-mounted)
-    └── ticket-ranker/
-        ├── meta.json
-        └── index.html
-```
+- **Passwords** — file share passwords are hashed with scrypt (salted, constant-time comparison)
+- **Rate limiting** — per-IP limits on all write endpoints (uploads, text fixer, slug checks)
+- **Prompt injection** — text fixer uses a hardened system prompt + output length cap to limit abuse
+- **CSP** — Content-Security-Policy restricts scripts, styles, fonts, and connections to known origins
+- **Headers** — `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `X-XSS-Protection` on all responses
+- **No auth on Ollama** — relies on network-level access control (private subnet only)
 
-## Tips
+## Stack
 
-- Each tool is completely independent — use any framework, plain HTML, whatever you want
-- Static assets (images, CSS, JS) can live in the tool's folder and be referenced with relative paths
-- For React tools, use `<script src="https://cdnjs.cloudflare.com/...">` from CDN
-- The `tools/` directory is volume-mounted, so you can edit tools without rebuilding the image
-- Only the manifest regeneration requires a restart (or you can `docker exec tools-aaris /entrypoint.sh` to refresh)
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Vanilla HTML, CSS, JS · Outfit + JetBrains Mono fonts |
+| Backend | Python 3.12 · Flask · Gunicorn (2 workers, 4 threads) |
+| AI | Ollama · Llama 3.1 8B (Q4_K_M) · Tesla M10 GPU |
+| Conversion | Calibre (ebook-convert) |
+| Database | SQLite (WAL mode) for file share metadata |
+| Proxy | Nginx (Alpine) |
+| Infra | Docker Compose · named volumes for persistence |
