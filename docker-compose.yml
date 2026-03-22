@@ -16,5 +16,11 @@ services:
     environment:
       - QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox
       - QT_QPA_PLATFORM=offscreen
+    volumes:
+      - shares-data:/app/shares
     restart: unless-stopped
     # No ports exposed — only accessible via nginx proxy
+
+volumes:
+  shares-data:
+    driver: local

@@ -14,6 +14,12 @@ generate_manifest() {
     dir=$(dirname "$meta")
     slug=$(basename "$dir")
 
+    # Skip tools marked as hidden (e.g. internal guides)
+    if jq -e '.hidden == true' "$meta" > /dev/null 2>&1; then
+      echo "  Skipping hidden tool: $slug"
+      continue
+    fi
+
     if [ "$first" = true ]; then
       first=false
     else

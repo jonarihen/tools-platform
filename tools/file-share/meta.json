@@ -1,0 +1,7 @@
+{
+  "name": "File Share",
+  "description": "Upload a file and get a shareable link — auto-deleted after 24 hours",
+  "icon": "📤",
+  "tag": "share",
+  "order": 5
+}

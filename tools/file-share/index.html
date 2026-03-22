@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Share – tools.aaris.tech</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .container { max-width: 640px; margin: 0 auto; padding: 48px 24px 80px; }
+    header { text-align: center; margin-bottom: 40px; }
+    .icon { font-size: 36px; margin-bottom: 12px; }
+    h1 {
+      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .subtitle { font-size: 16px; color: rgba(255,255,255,0.45); font-weight: 300; }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed rgba(255,255,255,0.12);
+      border-radius: 18px; padding: 56px 24px; text-align: center;
+      cursor: pointer; transition: all 0.25s ease;
+      background: rgba(255,255,255,0.02); position: relative;
+    }
+    .drop-zone.drag-over {
+      border-color: rgba(99,102,241,0.6); background: rgba(99,102,241,0.06);
+    }
+    .drop-zone.disabled { pointer-events: none; opacity: 0.5; }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-icon { font-size: 38px; margin-bottom: 14px; }
+    .drop-label { font-size: 17px; font-weight: 500; color: rgba(255,255,255,0.7); margin-bottom: 6px; }
+    .drop-hint  { font-size: 13px; color: rgba(255,255,255,0.25); }
+
+    /* Customize section */
+    .customize-toggle {
+      display: flex; align-items: center; gap: 8px; margin-top: 16px;
+      padding: 10px 0; cursor: pointer; color: rgba(255,255,255,0.35);
+      font-size: 13px; font-family: 'JetBrains Mono', monospace;
+      background: none; border: none; width: 100%; text-align: left;
+      transition: color 0.2s;
+    }
+    .customize-toggle:hover { color: rgba(255,255,255,0.6); }
+    .customize-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+    .customize-toggle.open .arrow { transform: rotate(90deg); }
+
+    .customize-panel {
+      display: none; padding: 20px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px; margin-bottom: 4px;
+      animation: fadeIn 0.2s ease;
+    }
+    .customize-panel.open { display: block; }
+
+    .field { margin-bottom: 18px; }
+    .field:last-child { margin-bottom: 0; }
+    .field label {
+      display: block; font-size: 12px; font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.3); letter-spacing: 0.06em; text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .slug-row { display: flex; align-items: center; gap: 0; }
+    .slug-prefix {
+      padding: 11px 12px; background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07); border-right: none;
+      border-radius: 10px 0 0 10px;
+      font-size: 12px; font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.2); white-space: nowrap;
+    }
+    input[type="text"], input[type="password"], select {
+      width: 100%; padding: 11px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px; color: #e8e8ed;
+      font-size: 14px; font-family: 'Outfit', sans-serif;
+      outline: none; transition: border-color 0.2s; box-sizing: border-box;
+    }
+    .slug-row input[type="text"] { border-radius: 0 10px 10px 0; flex: 1; }
+    input[type="text"]:focus, input[type="password"]:focus, select:focus {
+      border-color: rgba(99,102,241,0.45);
+    }
+    input::placeholder { color: rgba(255,255,255,0.15); }
+    select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='rgba(255,255,255,0.3)' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+    select option { background: #1a1a2e; }
+
+    /* Progress */
+    .progress-wrap {
+      margin-top: 20px; background: rgba(255,255,255,0.04);
+      border-radius: 8px; overflow: hidden; height: 5px; display: none;
+    }
+    .progress-bar {
+      height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8);
+      width: 0%; transition: width 0.3s ease; border-radius: 8px;
+    }
+
+    /* Status */
+    .status {
+      margin-top: 14px; padding: 12px 16px; border-radius: 10px;
+      font-size: 13px; font-family: 'JetBrains Mono', monospace;
+      animation: fadeIn 0.3s ease;
+    }
+    .status.error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #f87171; }
+    .status.info  { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); color: #60a5fa; }
+    .status.ok    { background: rgba(34,197,94,0.08);  border: 1px solid rgba(34,197,94,0.2);  color: #4ade80; }
+
+    /* Result card */
+    .result-card {
+      margin-top: 24px; padding: 24px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px; display: none; animation: fadeIn 0.35s ease;
+    }
+    .result-filename { font-size: 16px; font-weight: 600; color: #e8e8ed; margin-bottom: 4px; word-break: break-all; }
+    .result-meta { font-size: 13px; font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.3); margin-bottom: 18px; }
+
+    .link-row { display: flex; gap: 8px; align-items: stretch; }
+    .link-box {
+      flex: 1; padding: 11px 14px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px; font-size: 13px; font-family: 'JetBrains Mono', monospace;
+      color: #a5b4fc; word-break: break-all; user-select: all;
+    }
+    .btn-copy {
+      padding: 0 18px; background: rgba(99,102,241,0.15);
+      border: 1px solid rgba(99,102,241,0.3); border-radius: 10px;
+      color: #818cf8; font-size: 14px; font-weight: 600;
+      font-family: 'Outfit', sans-serif; cursor: pointer; white-space: nowrap;
+      transition: all 0.2s; flex-shrink: 0;
+    }
+    .btn-copy:hover { background: rgba(99,102,241,0.25); }
+    .btn-copy.copied { color: #4ade80; border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.08); }
+
+    .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px;
+      border-radius: 8px; font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    }
+    .badge-yellow { background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.2); color: #fbbf24; }
+    .badge-purple { background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); color: #a5b4fc; }
+
+    .btn-new {
+      display: block; width: 100%; margin-top: 18px; padding: 13px;
+      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px; color: rgba(255,255,255,0.4);
+      font-size: 14px; font-weight: 500; font-family: 'Outfit', sans-serif;
+      cursor: pointer; transition: all 0.2s; text-align: center;
+    }
+    .btn-new:hover { border-color: rgba(255,255,255,0.14); color: rgba(255,255,255,0.65); }
+
+    /* ── Download view ───────────────────────────────────────────────────── */
+    .dl-card {
+      padding: 36px 28px; background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px; text-align: center; animation: fadeIn 0.35s ease;
+    }
+    .dl-file-icon { font-size: 48px; margin-bottom: 16px; }
+    .dl-filename  { font-size: 20px; font-weight: 600; color: #e8e8ed; margin-bottom: 8px; word-break: break-all; }
+    .dl-meta      { font-size: 14px; font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.3); margin-bottom: 8px; }
+    .dl-expiry    {
+      display: inline-flex; align-items: center; gap: 6px; margin-bottom: 28px;
+      padding: 7px 14px; background: rgba(234,179,8,0.08);
+      border: 1px solid rgba(234,179,8,0.2); border-radius: 8px;
+      font-size: 12px; font-family: 'JetBrains Mono', monospace; color: #fbbf24;
+    }
+
+    /* Password gate */
+    .pw-gate { margin-bottom: 24px; }
+    .pw-gate .pw-row { display: flex; gap: 8px; max-width: 360px; margin: 0 auto; }
+    .pw-gate input { flex: 1; }
+    .btn-unlock {
+      padding: 11px 20px; background: rgba(99,102,241,0.15);
+      border: 1px solid rgba(99,102,241,0.3); border-radius: 10px;
+      color: #818cf8; font-size: 14px; font-weight: 600;
+      font-family: 'Outfit', sans-serif; cursor: pointer;
+      transition: all 0.2s; white-space: nowrap;
+    }
+    .btn-unlock:hover { background: rgba(99,102,241,0.25); }
+
+    .btn-download {
+      display: inline-block; padding: 15px 44px;
+      background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(99,102,241,0.08));
+      border: 1px solid rgba(99,102,241,0.35); border-radius: 14px;
+      color: #818cf8; font-size: 16px; font-weight: 600;
+      font-family: 'Outfit', sans-serif; cursor: pointer;
+      transition: all 0.2s; text-decoration: none;
+    }
+    .btn-download:hover { background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(99,102,241,0.14)); }
+    .btn-download:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(7px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back">← tools.aaris.tech</a>
+    <header>
+      <div class="icon">📤</div>
+      <h1>File Share</h1>
+      <p class="subtitle">Upload a file, share the link — auto-deleted on expiry</p>
+    </header>
+
+    <!-- ── Upload view ─────────────────────────────────────────────────── -->
+    <div id="upload-view">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput">
+        <div class="drop-icon">📁</div>
+        <div class="drop-label">Drop a file here or click to browse</div>
+        <div class="drop-hint">Max 5 GB · Any file type</div>
+      </div>
+
+      <!-- Customize toggle -->
+      <button class="customize-toggle" id="customizeToggle" onclick="toggleCustomize()">
+        <span class="arrow">▶</span> Customize link &amp; options
+      </button>
+      <div class="customize-panel" id="customizePanel">
+        <div class="field">
+          <label>Custom slug (optional)</label>
+          <div class="slug-row">
+            <span class="slug-prefix">?id=</span>
+            <input type="text" id="slugInput" placeholder="my-file" maxlength="50"
+                   oninput="validateSlug()" autocomplete="off" spellcheck="false">
+          </div>
+          <div id="slugStatus" style="font-size:12px;font-family:'JetBrains Mono',monospace;margin-top:6px;color:rgba(255,255,255,0.25);">
+            Letters, numbers and hyphens · 3–50 chars · no leading/trailing hyphens
+          </div>
+        </div>
+        <div class="field">
+          <label>Expires after</label>
+          <select id="expirySelect">
+            <option value="1">1 hour</option>
+            <option value="6">6 hours</option>
+            <option value="12">12 hours</option>
+            <option value="24" selected>24 hours</option>
+            <option value="48">48 hours</option>
+            <option value="72">3 days</option>
+            <option value="168">7 days</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Password protect (optional)</label>
+          <input type="password" id="passwordInput" placeholder="Leave blank for no password" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+
+      <div id="status"></div>
+
+      <div class="result-card" id="resultCard">
+        <div class="result-filename" id="resultFilename"></div>
+        <div class="result-meta" id="resultMeta"></div>
+        <div class="link-row">
+          <div class="link-box" id="shareLink"></div>
+          <button class="btn-copy" id="copyBtn" onclick="copyLink()">Copy</button>
+        </div>
+        <div class="badges">
+          <span class="badge badge-yellow" id="resultExpiry"></span>
+          <span class="badge badge-purple" id="resultPwBadge" style="display:none">🔒 Password protected</span>
+        </div>
+        <button class="btn-new" onclick="resetUpload()">Upload another file</button>
+      </div>
+    </div>
+
+    <!-- ── Download view ───────────────────────────────────────────────── -->
+    <div id="download-view" style="display:none">
+      <div class="dl-card" id="dlCard">
+        <div class="dl-file-icon">📄</div>
+        <div class="dl-filename" id="dlFilename">Loading...</div>
+        <div class="dl-meta" id="dlMeta"></div>
+        <div class="dl-expiry" id="dlExpiry"></div>
+
+        <!-- Password gate (shown when required) -->
+        <div class="pw-gate" id="pwGate" style="display:none">
+          <div class="pw-row">
+            <input type="password" id="dlPassword" placeholder="Enter password" autocomplete="current-password"
+                   onkeydown="if(event.key==='Enter') unlockDownload()">
+            <button class="btn-unlock" onclick="unlockDownload()">Unlock</button>
+          </div>
+          <div id="pwError" style="margin-top:10px;font-size:12px;font-family:'JetBrains Mono',monospace;color:#f87171;min-height:18px;"></div>
+        </div>
+
+        <button class="btn-download" id="dlBtn" onclick="triggerDownload()" style="display:none">
+          ⬇ Download
+        </button>
+      </div>
+      <div id="dl-status"></div>
+    </div>
+  </div>
+
+  <script>
+    const shareId = new URLSearchParams(location.search).get('id');
+    let _dlKey = null;
+    let _dlFilename = null;
+    let _pwRequired = false;
+    let _unlockedPassword = null;
+
+    // ── Download view ────────────────────────────────────────────────────────
+    if (shareId) {
+      document.getElementById('upload-view').style.display = 'none';
+      document.getElementById('download-view').style.display = 'block';
+      loadShareInfo(shareId);
+    }
+
+    async function loadShareInfo(key) {
+      try {
+        const res = await fetch(`/api/share/${encodeURIComponent(key)}/info`);
+        if (!res.ok) {
+          showDlError('This file is no longer available or the link has expired.');
+          return;
+        }
+        const data = await res.json();
+        _dlKey      = key;
+        _dlFilename = data.filename;
+        _pwRequired = data.password_required;
+
+        document.getElementById('dlFilename').textContent = data.filename;
+        document.getElementById('dlMeta').textContent     = formatBytes(data.size);
+
+        const secsLeft = Math.max(0, Math.round(data.expires_at - Date.now() / 1000));
+        document.getElementById('dlExpiry').textContent = '⏱ Expires in ' + formatDuration(secsLeft);
+
+        if (data.password_required) {
+          document.getElementById('pwGate').style.display = 'block';
+          setTimeout(() => document.getElementById('dlPassword').focus(), 100);
+        } else {
+          document.getElementById('dlBtn').style.display = 'inline-block';
+        }
+      } catch {
+        showDlError('Failed to load file information.');
+      }
+    }
+
+    async function unlockDownload() {
+      const pw = document.getElementById('dlPassword').value;
+      document.getElementById('pwError').textContent = '';
+      const btn = document.querySelector('.btn-unlock');
+      btn.disabled = true;
+      btn.textContent = 'Checking...';
+
+      try {
+        const res = await fetch(
+          `/api/share/${encodeURIComponent(_dlKey)}/download?password=${encodeURIComponent(pw)}`,
+          { method: 'HEAD' }
+        );
+        if (res.ok) {
+          _unlockedPassword = pw;
+          document.getElementById('pwGate').style.display = 'none';
+          document.getElementById('dlBtn').style.display  = 'inline-block';
+        } else if (res.status === 401) {
+          document.getElementById('pwError').textContent = 'Incorrect password. Try again.';
+          document.getElementById('dlPassword').select();
+        } else {
+          document.getElementById('pwError').textContent = 'Something went wrong. Please refresh.';
+        }
+      } catch {
+        document.getElementById('pwError').textContent = 'Network error. Please try again.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Unlock';
+      }
+    }
+
+    async function triggerDownload() {
+      const btn = document.getElementById('dlBtn');
+      btn.disabled = true;
+      btn.textContent = '⬇ Downloading...';
+
+      try {
+        const url = `/api/share/${encodeURIComponent(_dlKey)}/download` +
+          (_unlockedPassword != null ? `?password=${encodeURIComponent(_unlockedPassword)}` : '');
+
+        const res = await fetch(url);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showDlError(err.error || 'Download failed.');
+          return;
+        }
+
+        const blob = await res.blob();
+        const a    = document.createElement('a');
+        a.href     = URL.createObjectURL(blob);
+        a.download = _dlFilename || 'download';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      } catch {
+        showDlError('Download failed. Please try again.');
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = '⬇ Download';
+      }
+    }
+
+    function showDlError(msg) {
+      document.getElementById('dlCard').style.display = 'none';
+      document.getElementById('dl-status').innerHTML  = `<div class="status error">${msg}</div>`;
+    }
+
+    // ── Upload view ──────────────────────────────────────────────────────────
+    const dropZone    = document.getElementById('dropZone');
+    const fileInput   = document.getElementById('fileInput');
+    const statusEl    = document.getElementById('status');
+    const resultCard  = document.getElementById('resultCard');
+    const progressWrap = document.getElementById('progressWrap');
+    const progressBar  = document.getElementById('progressBar');
+
+    dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) uploadFile(fileInput.files[0]);
+    });
+
+    function toggleCustomize() {
+      const toggle = document.getElementById('customizeToggle');
+      const panel  = document.getElementById('customizePanel');
+      toggle.classList.toggle('open');
+      panel.classList.toggle('open');
+    }
+
+    let _slugCheckTimer = null;
+    let _slugValid = true; // empty = valid (optional field)
+
+    function validateSlug() {
+      const val = document.getElementById('slugInput').value.trim().toLowerCase();
+      const el  = document.getElementById('slugStatus');
+
+      clearTimeout(_slugCheckTimer);
+
+      if (!val) {
+        _slugValid = true;
+        el.style.color = 'rgba(255,255,255,0.25)';
+        el.textContent = 'Letters, numbers and hyphens · 3–50 chars · no leading/trailing hyphens';
+        return;
+      }
+
+      // Client-side format check first
+      const formatOk = /^[a-zA-Z0-9][a-zA-Z0-9\-]{1,48}[a-zA-Z0-9]$/.test(val);
+      if (!formatOk) {
+        _slugValid = false;
+        el.style.color = '#f87171';
+        el.textContent = val.length < 3
+          ? 'Too short — minimum 3 characters'
+          : val.length > 50
+          ? 'Too long — maximum 50 characters'
+          : /^[-]|[-]$/.test(val)
+          ? 'Cannot start or end with a hyphen'
+          : 'Only letters, numbers and hyphens allowed';
+        return;
+      }
+
+      // Debounce the availability check
+      el.style.color = 'rgba(255,255,255,0.25)';
+      el.textContent = 'Checking availability...';
+      _slugValid = false;
+
+      _slugCheckTimer = setTimeout(async () => {
+        try {
+          const res  = await fetch(`/api/share/slug-check?slug=${encodeURIComponent(val)}`);
+          const data = await res.json();
+          // Make sure the input hasn't changed while we were waiting
+          if (document.getElementById('slugInput').value.trim().toLowerCase() !== val) return;
+          if (data.available) {
+            _slugValid = true;
+            el.style.color = '#4ade80';
+            el.textContent = '✓ Available';
+          } else {
+            _slugValid = false;
+            el.style.color = '#f87171';
+            el.textContent = '✗ Already taken — choose another';
+          }
+        } catch {
+          _slugValid = false;
+          el.style.color = '#f87171';
+          el.textContent = 'Could not check availability';
+        }
+      }, 400);
+    }
+
+    function uploadFile(file) {
+      if (file.size > 5 * 1024 * 1024 * 1024) {
+        showStatus('File too large. Maximum size is 5 GB.', 'error');
+        return;
+      }
+
+      const slug = document.getElementById('slugInput').value.trim().toLowerCase();
+      if (slug && !_slugValid) {
+        showStatus('Please fix the slug before uploading.', 'error');
+        return;
+      }
+
+      dropZone.classList.add('disabled');
+      progressWrap.style.display = 'block';
+      progressBar.style.width    = '0%';
+      statusEl.innerHTML         = '';
+      resultCard.style.display   = 'none';
+
+      const formData = new FormData();
+      formData.append('file', file);
+      if (slug) formData.append('slug', slug);
+      formData.append('expires_in', document.getElementById('expirySelect').value);
+      const pw = document.getElementById('passwordInput').value;
+      if (pw) formData.append('password', pw);
+
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener('progress', e => {
+        if (e.lengthComputable)
+          progressBar.style.width = Math.round((e.loaded / e.total) * 90) + '%';
+      });
+
+      xhr.addEventListener('load', () => {
+        progressBar.style.width = '100%';
+        dropZone.classList.remove('disabled');
+        if (xhr.status === 200 || xhr.status === 201) {
+          showResult(JSON.parse(xhr.responseText));
+        } else {
+          let msg = 'Upload failed (HTTP ' + xhr.status + ').';
+          try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
+          showStatus(msg, 'error');
+          progressWrap.style.display = 'none';
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        dropZone.classList.remove('disabled');
+        progressWrap.style.display = 'none';
+        showStatus('Connection lost during upload. The file may be too large or the server timed out.', 'error');
+      });
+
+      xhr.addEventListener('timeout', () => {
+        dropZone.classList.remove('disabled');
+        progressWrap.style.display = 'none';
+        showStatus('Upload timed out. Please try again with a smaller file or better connection.', 'error');
+      });
+
+      xhr.open('POST', '/api/share/upload');
+      xhr.send(formData);
+    }
+
+    function showResult(data) {
+      progressWrap.style.display = 'none';
+      const link = `${location.origin}/tools/file-share/?id=${data.link_key}`;
+
+      document.getElementById('resultFilename').textContent = data.filename;
+      document.getElementById('resultMeta').textContent     = formatBytes(data.size);
+      document.getElementById('shareLink').textContent      = link;
+
+      const secsLeft = Math.max(0, Math.round(data.expires_at - Date.now() / 1000));
+      document.getElementById('resultExpiry').textContent   = '⏱ Expires in ' + formatDuration(secsLeft);
+
+      const pwBadge = document.getElementById('resultPwBadge');
+      pwBadge.style.display = data.password_required ? '' : 'none';
+
+      resultCard.style.display = 'block';
+    }
+
+    function copyLink() {
+      const link = document.getElementById('shareLink').textContent;
+      navigator.clipboard.writeText(link).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+      });
+    }
+
+    function resetUpload() {
+      resultCard.style.display   = 'none';
+      progressWrap.style.display = 'none';
+      statusEl.innerHTML         = '';
+      fileInput.value            = '';
+      document.getElementById('slugInput').value    = '';
+      document.getElementById('passwordInput').value = '';
+      validateSlug();
+    }
+
+    function showStatus(msg, type) {
+      statusEl.innerHTML = `<div class="status ${type}">${msg}</div>`;
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function formatBytes(b) {
+      if (b < 1024)             return b + ' B';
+      if (b < 1024 ** 2)        return (b / 1024).toFixed(1) + ' KB';
+      if (b < 1024 ** 3)        return (b / 1024 ** 2).toFixed(1) + ' MB';
+      return (b / 1024 ** 3).toFixed(2) + ' GB';
+    }
+
+    function formatDuration(secs) {
+      if (secs <= 0) return 'expired';
+      const d = Math.floor(secs / 86400);
+      const h = Math.floor((secs % 86400) / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      if (d > 0) return `${d}d ${h}h`;
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+  </script>
+</body>
+</html>

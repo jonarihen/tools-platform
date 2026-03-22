@@ -3,5 +3,6 @@
   "description": "Copy this guide and give it to any AI model to build new tools for the platform",
   "icon": "📋",
   "tag": "meta",
-  "order": 99
+  "order": 99,
+  "hidden": true
 }

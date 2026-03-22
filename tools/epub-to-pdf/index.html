@@ -5,22 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EPUB to PDF – tools.aaris.tech</title>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      min-height: 100vh;
-      background: linear-gradient(160deg, #0c0c0f 0%, #141420 40%, #0f1118 100%);
-      font-family: 'Outfit', sans-serif;
-      color: #e8e8ed;
-    }
     .container { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
-    .back {
-      display: inline-block; margin-bottom: 12px; font-size: 13px;
-      font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.2);
-      text-decoration: none; letter-spacing: 0.1em;
-    }
-    .back:hover { color: rgba(255,255,255,0.4); }
     header { text-align: center; margin-bottom: 40px; }
     .icon { font-size: 32px; margin-bottom: 12px; }
     h1 {
@@ -326,101 +315,135 @@
     }
 
     function showStatus(msg, type) {
-      document.getElementById('status').innerHTML =
-        '<div class="status ' + type + '">' + msg + '</div>';
+      var div = document.createElement('div');
+      div.className = 'status ' + type;
+      div.textContent = msg;
+      var el = document.getElementById('status');
+      el.innerHTML = '';
+      el.appendChild(div);
     }
 
+    // ── Phase 1: upload file, get job_id ──────────────────────────────────────
+    function uploadFile(formData, onUploadProgress) {
+      return new Promise(function(resolve, reject) {
+        var xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', function(e) {
+          if (e.lengthComputable)
+            onUploadProgress(Math.round((e.loaded / e.total) * 100));
+        });
+
+        xhr.addEventListener('load', function() {
+          if (xhr.status === 200) {
+            try { resolve(JSON.parse(xhr.responseText).job_id); }
+            catch (e) { reject(new Error('Invalid server response')); }
+          } else {
+            try { reject(new Error(JSON.parse(xhr.responseText).error || 'Upload failed')); }
+            catch (e) { reject(new Error('Upload failed (HTTP ' + xhr.status + ')')); }
+          }
+        });
+
+        xhr.addEventListener('error', function() {
+          reject(new Error('Connection failed — is the converter service running?'));
+        });
+
+        xhr.open('POST', '/api/convert/epub-to-pdf');
+        xhr.send(formData);
+      });
+    }
+
+    // ── Phase 2: poll /api/progress until done or error ───────────────────────
+    function pollProgress(jobId, onProgress) {
+      return new Promise(function(resolve, reject) {
+        var timer = setInterval(function() {
+          fetch('/api/progress/' + jobId)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data.status === 'done') {
+                clearInterval(timer);
+                onProgress(100, 'Conversion complete');
+                resolve();
+              } else if (data.status === 'error' || data.status === 'not_found') {
+                clearInterval(timer);
+                reject(new Error(data.message || 'Conversion failed'));
+              } else {
+                onProgress(data.progress || 0, data.message || 'Converting...');
+              }
+            })
+            .catch(function() {
+              clearInterval(timer);
+              reject(new Error('Lost connection to server'));
+            });
+        }, 600);
+      });
+    }
+
+    // ── Phase 3: fetch and trigger PDF download ────────────────────────────────
+    function downloadResult(jobId, filename) {
+      return fetch('/api/download/' + jobId)
+        .then(function(r) {
+          if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Download failed'); });
+          return r.blob();
+        })
+        .then(function(blob) {
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+    }
+
+    // ── Orchestrator ───────────────────────────────────────────────────────────
     async function convert() {
       if (!currentFile) return;
 
-      var btn = document.getElementById('convertBtn');
-      btn.disabled = true;
-      btn.textContent = 'Converting...';
-
+      var btn          = document.getElementById('convertBtn');
       var progressWrap = document.getElementById('progressWrap');
       var progressFill = document.getElementById('progressFill');
       var progressText = document.getElementById('progressText');
+
+      btn.disabled = true;
+      btn.textContent = 'Converting...';
       progressWrap.classList.remove('hidden');
       document.getElementById('status').innerHTML = '';
-
-      // Show upload progress
-      progressFill.classList.remove('indeterminate');
       progressFill.style.width = '0%';
       progressText.textContent = 'Uploading...';
 
       var formData = new FormData();
       formData.append('file', currentFile);
       formData.append('page_size', document.getElementById('pageSize').value);
-      formData.append('margin', document.getElementById('margin').value);
+      formData.append('margin',    document.getElementById('margin').value);
       formData.append('font_size', document.getElementById('fontSize').value);
 
       try {
-        var xhr = new XMLHttpRequest();
-        xhr.responseType = 'blob';
-
-        // Upload progress
-        xhr.upload.addEventListener('progress', function(e) {
-          if (e.lengthComputable) {
-            var pct = Math.round((e.loaded / e.total) * 100);
-            progressFill.style.width = pct + '%';
-            progressText.textContent = 'Uploading... ' + pct + '%';
-          }
+        // Phase 1 — upload (bar: 0 → 25%)
+        var jobId = await uploadFile(formData, function(pct) {
+          progressFill.style.width  = (pct * 0.25) + '%';
+          progressText.textContent  = 'Uploading... ' + pct + '%';
         });
 
-        xhr.upload.addEventListener('load', function() {
-          // Upload done, now waiting for conversion
-          progressFill.classList.add('indeterminate');
-          progressText.textContent = 'Converting with Calibre (this may take a minute)...';
+        // Phase 2 — conversion (bar: 25 → 97%)
+        await pollProgress(jobId, function(pct, msg) {
+          progressFill.style.width = (25 + pct * 0.72) + '%';
+          progressText.textContent = msg;
         });
 
-        xhr.addEventListener('load', function() {
-          if (xhr.status === 200) {
-            // Download the PDF
-            var blob = xhr.response;
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = currentFile.name.replace('.epub', '') + '.pdf';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+        // Phase 3 — download
+        progressFill.style.width = '99%';
+        progressText.textContent = 'Downloading PDF...';
+        await downloadResult(jobId, currentFile.name.replace('.epub', '') + '.pdf');
 
-            progressFill.classList.remove('indeterminate');
-            progressFill.style.width = '100%';
-            progressText.textContent = 'Done!';
-            showStatus('✓ PDF saved to your downloads', 'ok');
-          } else {
-            // Try to read error from response
-            var reader = new FileReader();
-            reader.onload = function() {
-              try {
-                var err = JSON.parse(reader.result);
-                showStatus('Conversion failed: ' + (err.error || 'Unknown error'), 'error');
-              } catch (e) {
-                showStatus('Conversion failed (HTTP ' + xhr.status + ')', 'error');
-              }
-            };
-            reader.readAsText(xhr.response);
-            progressFill.classList.remove('indeterminate');
-          }
-
-          btn.disabled = false;
-          btn.textContent = 'Convert to PDF';
-        });
-
-        xhr.addEventListener('error', function() {
-          showStatus('Connection failed — is the converter service running?', 'error');
-          progressFill.classList.remove('indeterminate');
-          btn.disabled = false;
-          btn.textContent = 'Convert to PDF';
-        });
-
-        xhr.open('POST', '/api/convert/epub-to-pdf');
-        xhr.send(formData);
+        progressFill.style.width = '100%';
+        progressText.textContent = 'Done!';
+        showStatus('✓ PDF saved to your downloads', 'ok');
 
       } catch (e) {
-        showStatus('Error: ' + e.message, 'error');
+        showStatus(e.message, 'error');
+        progressFill.style.width = '0%';
+        progressText.textContent = '';
+      } finally {
         btn.disabled = false;
         btn.textContent = 'Convert to PDF';
       }

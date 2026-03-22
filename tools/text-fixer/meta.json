@@ -1,0 +1,7 @@
+{
+  "name": "Text Fixer",
+  "description": "Fix spelling and grammar with AI — powered by Llama 3.1",
+  "icon": "✏️",
+  "tag": "ai",
+  "order": 4
+}
