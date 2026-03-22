@@ -301,7 +301,7 @@
       // Simple LCS-based word diff
       const m = oldWords.length, n = newWords.length;
       // For very long texts, fall back to simple display
-      if (m * n > 1000000) {
+      if (m * n > 250000) {
         outputChanges.innerHTML = '<span class="diff-remove">' + escHtml(originalText) + '</span><br><br>' +
                                   '<span class="diff-add">' + escHtml(correctedText) + '</span>';
         return;

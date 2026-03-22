@@ -109,6 +109,7 @@ ALLOWED_PAGE_SIZES = {'a4', 'a5', 'a3', 'letter', 'legal'}
 
 _jobs      = {}
 _jobs_lock = threading.Lock()
+JOB_TTL    = 3600  # Remove undownloaded jobs after 1 hour
 
 _STAGE_MAP = [
     ('input plugin',        5,  'Reading EPUB...'),
@@ -253,8 +254,8 @@ def health():
 
 # ── Text Fixer (AI) ──────────────────────────────────────────────────────────
 
-OLLAMA_URL = 'http://10.10.8.10:11434'
-OLLAMA_MODEL = 'llama3.1'
+OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://10.10.8.10:11434')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'llama3.1')
 TEXT_FIXER_MAX_CHARS = 10000
 TEXT_FIXER_MAX_OUTPUT_RATIO = 2.0  # Kill stream if output exceeds 2x input length
 TEXT_FIXER_RATE_LIMIT = 10         # Max requests per window per IP
@@ -387,6 +388,39 @@ def _cleanup_expired_shares():
 
 
 threading.Thread(target=_cleanup_expired_shares, daemon=True).start()
+
+
+def _cleanup_stale_jobs():
+    """Background thread: remove conversion jobs older than JOB_TTL every 5 minutes."""
+    while True:
+        time.sleep(300)
+        cutoff = time.time() - JOB_TTL
+        with _jobs_lock:
+            stale = [jid for jid, job in _jobs.items() if job.get('created', 0) < cutoff]
+            for jid in stale:
+                job = _jobs.pop(jid)
+                try:
+                    os.remove(job.get('pdf_path', ''))
+                except OSError:
+                    pass
+
+
+threading.Thread(target=_cleanup_stale_jobs, daemon=True).start()
+
+
+def _cleanup_rate_limit_stores():
+    """Background thread: prune IPs with no recent activity every 10 minutes."""
+    while True:
+        time.sleep(600)
+        now = time.time()
+        with _rate_limit_lock:
+            for bucket, store in list(_rate_limit_stores.items()):
+                empty_ips = [ip for ip, ts in store.items() if not ts or ts[-1] < now - 3600]
+                for ip in empty_ips:
+                    del store[ip]
+
+
+threading.Thread(target=_cleanup_rate_limit_stores, daemon=True).start()
 
 
 @app.route('/api/share/slug-check', methods=['GET'])

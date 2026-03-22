@@ -7,7 +7,8 @@ services:
     volumes:
       - ./tools:/usr/share/nginx/html/tools:ro
     depends_on:
-      - converter
+      converter:
+        condition: service_healthy
     restart: unless-stopped
 
   converter:
@@ -16,9 +17,15 @@ services:
     environment:
       - QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox
       - QT_QPA_PLATFORM=offscreen
+      - OLLAMA_URL=http://10.10.8.10:11434
     volumes:
       - shares-data:/app/shares
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     # No ports exposed — only accessible via nginx proxy
 
 volumes:
