@@ -350,8 +350,12 @@
 
       try {
         const res = await fetch(
-          `/api/share/${encodeURIComponent(_dlKey)}/download?password=${encodeURIComponent(pw)}`,
-          { method: 'HEAD' }
+          `/api/share/${encodeURIComponent(_dlKey)}/download`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pw })
+          }
         );
         if (res.ok) {
           _unlockedPassword = pw;
@@ -377,10 +381,15 @@
       btn.textContent = '⬇ Downloading...';
 
       try {
-        const url = `/api/share/${encodeURIComponent(_dlKey)}/download` +
-          (_unlockedPassword != null ? `?password=${encodeURIComponent(_unlockedPassword)}` : '');
+        const fetchOpts = _unlockedPassword != null
+          ? {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password: _unlockedPassword })
+            }
+          : {};
 
-        const res = await fetch(url);
+        const res = await fetch(`/api/share/${encodeURIComponent(_dlKey)}/download`, fetchOpts);
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           showDlError(err.error || 'Download failed.');

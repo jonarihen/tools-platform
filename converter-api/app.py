@@ -5,13 +5,25 @@ import uuid
 import threading
 import re
 import time
+import hmac
 import hashlib
 import sqlite3
 import json
+import logging
 import requests as http_requests
+from werkzeug.security import generate_password_hash, check_password_hash
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 6 * 1024 * 1024 * 1024  # 6 GB (headroom for multipart overhead)
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    return response
 
 
 @app.errorhandler(413)
@@ -263,31 +275,33 @@ TEXT_FIXER_SYSTEM_PROMPT = (
     "- Your output must be similar in length to the input. Do not add or remove content."
 )
 
-# In-memory rate limiter: { ip: [timestamp, timestamp, ...] }
-_rate_limit_store = {}
+# ── Generic rate limiter ──────────────────────────────────────────────────────
+
+_rate_limit_stores = {}  # { bucket_name: { ip: [timestamp, ...] } }
 _rate_limit_lock = threading.Lock()
 
 
-def _check_rate_limit(ip):
+def _check_rate_limit(ip, bucket, max_requests, window_secs):
     """Return True if the request is allowed, False if rate-limited."""
     now = time.time()
-    cutoff = now - TEXT_FIXER_RATE_WINDOW
+    cutoff = now - window_secs
     with _rate_limit_lock:
-        timestamps = _rate_limit_store.get(ip, [])
-        # Prune old entries
+        store = _rate_limit_stores.setdefault(bucket, {})
+        timestamps = store.get(ip, [])
         timestamps = [t for t in timestamps if t > cutoff]
-        if len(timestamps) >= TEXT_FIXER_RATE_LIMIT:
-            _rate_limit_store[ip] = timestamps
+        if len(timestamps) >= max_requests:
+            store[ip] = timestamps
             return False
         timestamps.append(now)
-        _rate_limit_store[ip] = timestamps
+        store[ip] = timestamps
         return True
 
 
 @app.route('/api/fix-text', methods=['POST'])
 def fix_text():
     client_ip = request.headers.get('X-Real-IP', request.remote_addr)
-    if not _check_rate_limit(client_ip):
+    if not _check_rate_limit(client_ip, 'fix-text', TEXT_FIXER_RATE_LIMIT, TEXT_FIXER_RATE_WINDOW):
+        logger.warning('Rate limit exceeded for %s on fix-text', client_ip)
         return {'error': 'Rate limit exceeded. Please wait a minute before trying again.'}, 429
 
     data = request.get_json(silent=True)
@@ -340,7 +354,8 @@ def fix_text():
         except http_requests.Timeout:
             yield f"data: {json.dumps({'error': 'AI server timed out'})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            logger.exception('Unexpected error in fix-text stream')
+            yield f"data: {json.dumps({'error': 'AI service error'})}\n\n"
 
     return Response(
         generate(),
@@ -376,6 +391,9 @@ threading.Thread(target=_cleanup_expired_shares, daemon=True).start()
 
 @app.route('/api/share/slug-check', methods=['GET'])
 def slug_check():
+    client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+    if not _check_rate_limit(client_ip, 'slug-check', 30, 60):
+        return {'available': False, 'error': 'Too many requests'}, 429
     slug = request.args.get('slug', '').strip().lower()
     if not slug:
         return {'available': False, 'error': 'No slug provided'}, 400
@@ -390,6 +408,11 @@ def slug_check():
 
 @app.route('/api/share/upload', methods=['POST'])
 def share_upload():
+    client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+    if not _check_rate_limit(client_ip, 'upload', 10, 3600):
+        logger.warning('Upload rate limit exceeded for %s', client_ip)
+        return {'error': 'Upload limit reached. Please try again later.'}, 429
+
     if 'file' not in request.files:
         return {'error': 'No file uploaded'}, 400
     f = request.files['file']
@@ -415,7 +438,7 @@ def share_upload():
 
     # ── Password ─────────────────────────────────────────────────────────────
     raw_pw  = request.form.get('password', '').strip()
-    pw_hash = hashlib.sha256(raw_pw.encode()).hexdigest() if raw_pw else None
+    pw_hash = generate_password_hash(raw_pw) if raw_pw else None
 
     # ── Storage cap check ────────────────────────────────────────────────────
     with _db_connect() as conn:
@@ -486,7 +509,7 @@ def share_info(key):
     }
 
 
-@app.route('/api/share/<key>/download', methods=['GET'])
+@app.route('/api/share/<key>/download', methods=['GET', 'POST'])
 def share_download(key):
     row = _db_get_share(key)
     if not row:
@@ -495,8 +518,15 @@ def share_download(key):
         _db_delete_share(row['share_id'], row['path'])
         return {'error': 'Not found or expired'}, 404
     if row['password_hash']:
-        provided = request.args.get('password', '')
-        if hashlib.sha256(provided.encode()).hexdigest() != row['password_hash']:
+        # Accept password from POST body (preferred) or query param (legacy)
+        provided = ''
+        if request.is_json and request.get_json(silent=True):
+            provided = request.get_json(silent=True).get('password', '')
+        else:
+            provided = request.args.get('password', '')
+        if not check_password_hash(row['password_hash'], provided):
+            client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+            logger.warning('Failed share password attempt from %s for key %s', client_ip, key)
             return {'error': 'Invalid password'}, 401
     if not os.path.exists(row['path']):
         return {'error': 'File not found'}, 404
