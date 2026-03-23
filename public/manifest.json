@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Date Calculator",
+    "description": "Add/subtract time from a date, or calculate the difference between two dates (great for “days since…”).",
+    "icon": "📅",
+    "tag": "utility",
+    "order": 30,
+    "slug": "date-calculator"
+  },
+  {
+    "name": "Download Time Calculator",
+    "description": "Estimate how long a download will take based on your speed and file size (supports Mbps vs MB/s + GB vs GiB).",
+    "icon": "⏳",
+    "tag": "utility",
+    "order": 12,
+    "slug": "download-time-calculator"
+  },
+  {
+    "name": "EPUB to PDF",
+    "description": "High-quality ebook conversion powered by Calibre — with table of contents and page numbers",
+    "icon": "📖",
+    "tag": "converter",
+    "order": 3,
+    "slug": "epub-to-pdf"
+  },
+  {
+    "name": "File Share",
+    "description": "Upload a file and get a shareable link — auto-deleted after 24 hours",
+    "icon": "📤",
+    "tag": "share",
+    "order": 5,
+    "slug": "file-share"
+  },
+  {
+    "name": "JSON Formatter",
+    "description": "Paste messy JSON and get it pretty-printed instantly",
+    "icon": "{ }",
+    "tag": "dev",
+    "order": 5,
+    "slug": "json-formatter"
+  },
+  {
+    "name": "Text Fixer",
+    "description": "Fix spelling and grammar with AI — powered by Llama 3.1",
+    "icon": "✏️",
+    "tag": "ai",
+    "order": 4,
+    "slug": "text-fixer"
+  },
+  {
+    "name": "Ticket Ranker",
+    "description": "Prioritize tickets with pairwise comparisons using binary insertion sort",
+    "icon": "⚡",
+    "tag": "productivity",
+    "order": 1,
+    "slug": "ticket-ranker"
+  },
+  {
+    "name": "Unit Converter",
+    "description": "Convert time, data, bandwidth, frequency, power, temperature and more — built for IT",
+    "icon": "🔄",
+    "tag": "utility",
+    "order": 2,
+    "slug": "unit-converter"
+  }
+]
