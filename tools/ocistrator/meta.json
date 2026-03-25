@@ -1,0 +1,7 @@
+{
+  "name": "Ocistrator",
+  "description": "Platform administration dashboard",
+  "icon": "⚙️",
+  "tag": "admin",
+  "hidden": true
+}

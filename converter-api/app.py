@@ -42,8 +42,14 @@ MAX_SHARE_SIZE = 5 * 1024 * 1024 * 1024   # 5 GB per file
 MAX_TOTAL_SIZE = 50 * 1024 * 1024 * 1024  # 50 GB total storage cap
 MAX_TTL        = 7 * 24 * 3600            # 7 days maximum expiry
 
+ADMIN_PASSWORD = (os.getenv('ADMIN_PASSWORD') or '').strip()
+ADMIN_TOKEN_TTL = 24 * 3600  # 24 hours
+SHARE_PASSWORD_FAIL_LIMIT = 10
+SHARE_PASSWORD_FAIL_WINDOW = 15 * 60
+
 _SLUG_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-]{1,48}[a-zA-Z0-9]$')
 _ID_RE   = re.compile(r'^[a-f0-9]{16}$')
+_TOOL_SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9\-]{0,48}[a-z0-9]$')
 
 # Single lock serialises all DB writes (SQLite WAL handles concurrent reads fine)
 _db_lock = threading.Lock()
@@ -74,9 +80,37 @@ def _init_db():
         ''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_slug       ON shares(slug)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_expires_at ON shares(expires_at)')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS disabled_tools (
+                slug TEXT PRIMARY KEY,
+                disabled_at REAL NOT NULL
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS tool_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT NOT NULL,
+                event TEXT NOT NULL DEFAULT 'view',
+                value REAL NOT NULL DEFAULT 0,
+                ts REAL NOT NULL,
+                ip TEXT
+            )
+        ''')
+        # Migrate: add columns if upgrading from older schema
+        cols = {r[1] for r in conn.execute('PRAGMA table_info(tool_usage)').fetchall()}
+        if 'event' not in cols:
+            conn.execute("ALTER TABLE tool_usage ADD COLUMN event TEXT NOT NULL DEFAULT 'view'")
+        if 'value' not in cols:
+            conn.execute("ALTER TABLE tool_usage ADD COLUMN value REAL NOT NULL DEFAULT 0")
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_usage_slug  ON tool_usage(slug)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_usage_ts    ON tool_usage(ts)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_usage_event ON tool_usage(event)')
 
 
 _init_db()
+
+if not ADMIN_PASSWORD:
+    logger.warning('ADMIN_PASSWORD is not set; admin endpoints are disabled until configured')
 
 
 def _db_get_share(key):
@@ -101,6 +135,17 @@ def _db_delete_share(share_id, path):
         os.remove(path)
     except OSError:
         pass
+
+
+def _get_active_share(key):
+    """Return a live share row for a hex ID or slug key, or an error response."""
+    row = _db_get_share(key)
+    if not row:
+        return None, ({'error': 'Not found or expired'}, 404)
+    if time.time() > row['expires_at']:
+        _db_delete_share(row['share_id'], row['path'])
+        return None, ({'error': 'Not found or expired'}, 404)
+    return row, None
 
 
 # ── EPUB conversion (unchanged) ───────────────────────────────────────────────
@@ -160,6 +205,10 @@ def _run_conversion(job_id, epub_path, pdf_path, cmd):
         process.wait(timeout=300)
         if process.returncode == 0 and os.path.exists(pdf_path):
             _update_job(job_id, status='done', progress=100, message='Conversion complete')
+            try:
+                _track_event_internal('epub-to-pdf', 'conversion', 1)
+            except Exception:
+                pass
         else:
             _update_job(job_id, status='error', message='Conversion failed')
     except subprocess.TimeoutExpired:
@@ -260,6 +309,8 @@ TEXT_FIXER_MAX_CHARS = 10000
 TEXT_FIXER_MAX_OUTPUT_RATIO = 2.0  # Kill stream if output exceeds 2x input length
 TEXT_FIXER_RATE_LIMIT = 10         # Max requests per window per IP
 TEXT_FIXER_RATE_WINDOW = 60        # Window in seconds
+TRACK_RATE_LIMIT = 120             # Max public tracking events per minute per IP
+TRACK_RATE_WINDOW = 60
 
 TEXT_FIXER_SYSTEM_PROMPT = (
     "You are a strict text proofreader. Your ONLY job is to fix spelling, grammar, "
@@ -314,6 +365,11 @@ def fix_text():
         return {'error': f'Text too long (max {TEXT_FIXER_MAX_CHARS} characters)'}, 400
 
     max_output_chars = int(len(text) * TEXT_FIXER_MAX_OUTPUT_RATIO) + 200
+
+    try:
+        _track_event_internal('text-fixer', 'fix', len(text))
+    except Exception:
+        pass
 
     def generate():
         try:
@@ -418,6 +474,8 @@ def _cleanup_rate_limit_stores():
                 empty_ips = [ip for ip, ts in store.items() if not ts or ts[-1] < now - 3600]
                 for ip in empty_ips:
                     del store[ip]
+                if not store:
+                    del _rate_limit_stores[bucket]
 
 
 threading.Thread(target=_cleanup_rate_limit_stores, daemon=True).start()
@@ -517,6 +575,11 @@ def share_upload():
             (share_id, safe_name, file_path, expires_at, size, slug or None, pw_hash)
         )
 
+    try:
+        _track_event_internal('file-share', 'upload', size)
+    except Exception:
+        pass
+
     return {
         'share_id':          share_id,
         'link_key':          slug if slug else share_id,
@@ -529,12 +592,9 @@ def share_upload():
 
 @app.route('/api/share/<key>/info', methods=['GET'])
 def share_info(key):
-    row = _db_get_share(key)
-    if not row:
-        return {'error': 'Not found or expired'}, 404
-    if time.time() > row['expires_at']:
-        _db_delete_share(row['share_id'], row['path'])
-        return {'error': 'Not found or expired'}, 404
+    row, error = _get_active_share(key)
+    if error:
+        return error
     return {
         'filename':          row['filename'],
         'size':              row['size'],
@@ -543,28 +603,319 @@ def share_info(key):
     }
 
 
-@app.route('/api/share/<key>/download', methods=['GET', 'POST'])
-def share_download(key):
-    row = _db_get_share(key)
-    if not row:
-        return {'error': 'Not found or expired'}, 404
-    if time.time() > row['expires_at']:
-        _db_delete_share(row['share_id'], row['path'])
-        return {'error': 'Not found or expired'}, 404
+def _get_share_password_from_request():
+    if request.is_json:
+        data = request.get_json(silent=True)
+        if isinstance(data, dict):
+            provided = data.get('password', '')
+            return provided if isinstance(provided, str) else ''
+    provided = request.args.get('password', '')
+    return provided if isinstance(provided, str) else ''
+
+
+def _validate_share_password(row, key):
     if row['password_hash']:
-        # Accept password from POST body (preferred) or query param (legacy)
-        provided = ''
-        if request.is_json and request.get_json(silent=True):
-            provided = request.get_json(silent=True).get('password', '')
-        else:
-            provided = request.args.get('password', '')
+        provided = _get_share_password_from_request()
         if not check_password_hash(row['password_hash'], provided):
             client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+            if not _check_rate_limit(
+                client_ip,
+                f'share-password-fail:{row["share_id"]}',
+                SHARE_PASSWORD_FAIL_LIMIT,
+                SHARE_PASSWORD_FAIL_WINDOW,
+            ):
+                logger.warning('Share password rate limit exceeded from %s for key %s', client_ip, key)
+                return {'error': 'Too many failed password attempts. Please wait 15 minutes and try again.'}, 429
             logger.warning('Failed share password attempt from %s for key %s', client_ip, key)
             return {'error': 'Invalid password'}, 401
+    return None
+
+
+@app.route('/api/share/<key>/verify', methods=['POST'])
+def share_verify(key):
+    row, error = _get_active_share(key)
+    if error:
+        return error
+    pw_error = _validate_share_password(row, key)
+    if pw_error:
+        return pw_error
+    return {'ok': True}
+
+
+@app.route('/api/share/<key>/download', methods=['GET', 'POST'])
+def share_download(key):
+    row, error = _get_active_share(key)
+    if error:
+        return error
+    pw_error = _validate_share_password(row, key)
+    if pw_error:
+        return pw_error
     if not os.path.exists(row['path']):
         return {'error': 'File not found'}, 404
     return send_file(row['path'], as_attachment=True, download_name=row['filename'])
+
+
+# ── Usage tracking ────────────────────────────────────────────────────────────
+
+@app.route('/api/track', methods=['POST'])
+def track_usage():
+    """Record a tool event. Called by /track.js and tool-specific actions."""
+    client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+    if not _check_rate_limit(client_ip, 'track', TRACK_RATE_LIMIT, TRACK_RATE_WINDOW):
+        return {'error': 'Too many tracking events'}, 429
+
+    data = request.get_json(silent=True)
+    if not data or not data.get('slug', '').strip():
+        return {'error': 'No slug'}, 400
+    slug = data['slug'].strip().lower()
+    if not _TOOL_SLUG_RE.fullmatch(slug):
+        return {'error': 'Invalid slug'}, 400
+    event = data.get('event', 'view')
+    event = event.strip().lower() if isinstance(event, str) else 'view'
+    if event not in {'view', 'rank'}:
+        return {'error': 'Invalid event'}, 400
+
+    value = 0
+    if event == 'rank':
+        if slug != 'ticket-ranker':
+            return {'error': 'Invalid event for tool'}, 400
+        try:
+            value = int(float(data.get('value', 0)))
+        except (ValueError, TypeError):
+            return {'error': 'Invalid value'}, 400
+        if value < 0 or value > 1000:
+            return {'error': 'Value out of range'}, 400
+
+    with _db_lock, _db_connect() as conn:
+        conn.execute(
+            'INSERT INTO tool_usage (slug, event, value, ts, ip) VALUES (?, ?, ?, ?, ?)',
+            (slug, event, value, time.time(), client_ip)
+        )
+    return {'ok': True}
+
+
+def _track_event_internal(slug, event, value=0):
+    """Record a tracking event from server-side code (no request context)."""
+    with _db_lock, _db_connect() as conn:
+        conn.execute(
+            'INSERT INTO tool_usage (slug, event, value, ts, ip) VALUES (?, ?, ?, ?, ?)',
+            (slug, event, value, time.time(), 'server')
+        )
+
+
+def _cleanup_old_usage():
+    """Background thread: delete usage rows older than 90 days every hour."""
+    while True:
+        time.sleep(3600)
+        cutoff = time.time() - 90 * 86400
+        with _db_lock, _db_connect() as conn:
+            conn.execute('DELETE FROM tool_usage WHERE ts < ?', (cutoff,))
+
+
+threading.Thread(target=_cleanup_old_usage, daemon=True).start()
+
+
+# ── Admin auth ────────────────────────────────────────────────────────────────
+
+_admin_tokens = {}  # { token: expires_at }
+_admin_tokens_lock = threading.Lock()
+
+
+def _create_admin_token():
+    token = uuid.uuid4().hex
+    with _admin_tokens_lock:
+        _admin_tokens[token] = time.time() + ADMIN_TOKEN_TTL
+    return token
+
+
+def _verify_admin_token():
+    """Check Authorization header for a valid admin token. Returns True/False."""
+    if not ADMIN_PASSWORD:
+        return False
+    auth = request.headers.get('Authorization', '')
+    if not auth.startswith('Bearer '):
+        return False
+    token = auth[7:]
+    with _admin_tokens_lock:
+        expires = _admin_tokens.get(token)
+        if not expires or time.time() > expires:
+            _admin_tokens.pop(token, None)
+            return False
+    return True
+
+
+@app.route('/api/admin/auth', methods=['POST'])
+def admin_auth():
+    """Authenticate with the admin password, return a session token."""
+    if not ADMIN_PASSWORD:
+        return {'error': 'Admin auth is disabled until ADMIN_PASSWORD is configured'}, 503
+    client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+    if not _check_rate_limit(client_ip, 'admin-auth', 5, 300):
+        return {'error': 'Too many attempts. Try again in 5 minutes.'}, 429
+    data = request.get_json(silent=True)
+    if not data or not data.get('password'):
+        return {'error': 'Password required'}, 400
+    if not hmac.compare_digest(data['password'], ADMIN_PASSWORD):
+        logger.warning('Failed admin login from %s', client_ip)
+        return {'error': 'Invalid password'}, 401
+    token = _create_admin_token()
+    return {'token': token}
+
+
+@app.route('/api/admin/verify', methods=['GET'])
+def admin_verify():
+    """Check if the current token is still valid."""
+    if not _verify_admin_token():
+        return {'valid': False}, 401
+    return {'valid': True}
+
+
+# ── Admin: tool management ────────────────────────────────────────────────────
+
+@app.route('/api/admin/disabled-tools', methods=['GET'])
+def list_disabled_tools():
+    """Return list of disabled tool slugs (public — landing page needs this)."""
+    with _db_connect() as conn:
+        rows = conn.execute('SELECT slug FROM disabled_tools').fetchall()
+    return {'disabled': [r['slug'] for r in rows]}
+
+
+@app.route('/api/admin/tools/<slug>/disable', methods=['POST'])
+def disable_tool(slug):
+    if not _verify_admin_token():
+        return {'error': 'Unauthorized'}, 401
+    slug = slug.strip().lower()
+    if not _TOOL_SLUG_RE.fullmatch(slug):
+        return {'error': 'Invalid slug'}, 400
+    with _db_lock, _db_connect() as conn:
+        conn.execute(
+            'INSERT OR IGNORE INTO disabled_tools (slug, disabled_at) VALUES (?, ?)',
+            (slug, time.time())
+        )
+    return {'status': 'disabled', 'slug': slug}
+
+
+@app.route('/api/admin/tools/<slug>/enable', methods=['POST'])
+def enable_tool(slug):
+    if not _verify_admin_token():
+        return {'error': 'Unauthorized'}, 401
+    slug = slug.strip().lower()
+    with _db_lock, _db_connect() as conn:
+        conn.execute('DELETE FROM disabled_tools WHERE slug = ?', (slug,))
+    return {'status': 'enabled', 'slug': slug}
+
+
+# ── Admin: usage stats ───────────────────────────────────────────────────────
+
+@app.route('/api/admin/stats', methods=['GET'])
+def admin_stats():
+    """Return usage statistics for all tools."""
+    if not _verify_admin_token():
+        return {'error': 'Unauthorized'}, 401
+
+    now = time.time()
+    day_ago = now - 86400
+    week_ago = now - 7 * 86400
+    month_ago = now - 30 * 86400
+
+    with _db_connect() as conn:
+        # Per-tool aggregates
+        rows = conn.execute('''
+            SELECT slug,
+                   COUNT(*) AS total,
+                   SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END) AS today,
+                   SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END) AS week,
+                   SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END) AS month
+            FROM tool_usage
+            GROUP BY slug
+        ''', (day_ago, week_ago, month_ago)).fetchall()
+
+        tool_stats = {}
+        for r in rows:
+            tool_stats[r['slug']] = {
+                'total': r['total'],
+                'today': r['today'],
+                'week':  r['week'],
+                'month': r['month'],
+            }
+
+        # Daily counts for last 30 days (for line chart)
+        daily_rows = conn.execute('''
+            SELECT slug,
+                   CAST((ts / 86400) AS INTEGER) AS day_bucket,
+                   COUNT(*) AS count
+            FROM tool_usage
+            WHERE ts >= ?
+            GROUP BY slug, day_bucket
+            ORDER BY day_bucket
+        ''', (month_ago,)).fetchall()
+
+        daily = {}
+        for r in daily_rows:
+            slug = r['slug']
+            if slug not in daily:
+                daily[slug] = []
+            daily[slug].append({
+                'date': time.strftime('%Y-%m-%d', time.gmtime(r['day_bucket'] * 86400)),
+                'count': r['count'],
+            })
+
+        # Total views today / this week / all time
+        summary = conn.execute('''
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END) AS today,
+                   SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END) AS week
+            FROM tool_usage
+        ''', (day_ago, week_ago)).fetchone()
+
+        # Event-specific aggregates (conversions, uploads, rankings, etc.)
+        event_rows = conn.execute('''
+            SELECT slug, event, COUNT(*) AS count, SUM(value) AS total_value
+            FROM tool_usage
+            WHERE event != 'view'
+            GROUP BY slug, event
+        ''').fetchall()
+
+        events = {}
+        for r in event_rows:
+            slug = r['slug']
+            if slug not in events:
+                events[slug] = {}
+            events[slug][r['event']] = {
+                'count': r['count'],
+                'total_value': r['total_value'] or 0,
+            }
+
+        # Live file share stats
+        share_row = conn.execute('''
+            SELECT COUNT(*) AS active_shares,
+                   COALESCE(SUM(size), 0) AS active_bytes
+            FROM shares
+            WHERE expires_at > ?
+        ''', (now,)).fetchone()
+
+        # Total bytes ever uploaded (from events)
+        uploaded_row = conn.execute('''
+            SELECT COALESCE(SUM(value), 0) AS total_bytes
+            FROM tool_usage
+            WHERE slug = 'file-share' AND event = 'upload'
+        ''').fetchone()
+
+    return {
+        'tools': tool_stats,
+        'daily': daily,
+        'events': events,
+        'summary': {
+            'total': summary['total'] or 0,
+            'today': summary['today'] or 0,
+            'week':  summary['week'] or 0,
+        },
+        'file_share': {
+            'active_shares': share_row['active_shares'] or 0,
+            'active_bytes':  share_row['active_bytes'] or 0,
+            'total_uploaded_bytes': uploaded_row['total_bytes'] or 0,
+        },
+    }
 
 
 if __name__ == '__main__':

@@ -65,6 +65,8 @@ served through Nginx and Docker Compose.
 ```bash
 git clone git@github.com:jonarihen/tools-platform.git
 cd tools-platform
+cp .env.example .env
+# Set a strong ADMIN_PASSWORD in .env before starting
 docker compose up --build -d
 ```
 
@@ -74,10 +76,11 @@ The platform is available at **http://localhost:8080**.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `ADMIN_PASSWORD` | Required | Admin password for `/tools/ocistrator/` and `/api/admin/*` |
 | `OLLAMA_URL` | `http://10.10.8.10:11434` | Ollama API endpoint for the Text Fixer tool |
 | `OLLAMA_MODEL` | `llama3.1` | Model to use for text correction |
 
-Set these in `docker-compose.yml` under the `converter` service environment.
+Set these in `.env` or your shell environment before running `docker compose up`.
 
 ## Project Structure
 
@@ -159,7 +162,7 @@ The platform is hardened for public-facing deployment:
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Vanilla HTML, CSS, JS · Outfit + JetBrains Mono fonts |
-| Backend | Python 3.12 · Flask · Gunicorn (2 workers, 4 threads) |
+| Backend | Python 3.12 · Flask · Gunicorn (1 worker, 8 threads) |
 | AI | Ollama · Llama 3.1 8B (Q4_K_M) · Tesla M10 GPU |
 | Conversion | Calibre (ebook-convert) |
 | Database | SQLite (WAL mode) for file share metadata |

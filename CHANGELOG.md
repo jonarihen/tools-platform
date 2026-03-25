@@ -10,6 +10,9 @@ All notable changes to tools.aaris.tech are documented here.
 - **Password hashing** — replaced unsalted SHA-256 with werkzeug's scrypt (salted, constant-time comparison) for file share passwords
 - **Password no longer in URL** — file share download sends password via POST body instead of query parameter, preventing leaks in browser history, server logs, and referer headers
 - **Rate limiting** — added per-IP limits to file uploads (10/hr), slug checks (30/min); text fixer already had 10/min
+- **Share password throttling** — failed password attempts on protected file shares are now rate-limited to slow brute-force attacks
+- **Tracking endpoint hardening** — `/api/track` is now rate-limited and only accepts the expected public client events
+- **Admin password required** — admin auth no longer falls back to `changeme`; deployment now requires `ADMIN_PASSWORD` to be set
 - **Content Security Policy** — added CSP header in nginx restricting scripts, styles, fonts, and connections to known origins
 - **Flask security headers** — all API responses now include `X-Content-Type-Options: nosniff` and `X-Frame-Options: SAMEORIGIN`
 - **Error sanitisation** — text fixer stream no longer leaks internal exception details to clients
@@ -20,10 +23,11 @@ All notable changes to tools.aaris.tech are documented here.
 - **Stale job cleanup** — background thread removes undownloaded EPUB conversion jobs after 1 hour, preventing unbounded memory growth
 - **Rate limiter pruning** — background thread removes inactive IPs from rate limit stores hourly, preventing slow memory leak
 - **Ollama URL configurable** — `OLLAMA_URL` and `OLLAMA_MODEL` are now environment variables in `docker-compose.yml`, configurable without rebuild
-- **2 gunicorn workers** — EPUB conversions no longer block text fixer and file share API calls
+- **Single gunicorn worker + 8 threads** — keeps in-memory EPUB jobs, admin sessions, and rate-limit state consistent across requests while still allowing concurrent API traffic
 - **No-cache on tool HTML** — nginx sends `Cache-Control: no-cache` on tool `index.html` pages so users always get fresh content after deploys
 - **Diff memory cap** — lowered LCS diff threshold in text fixer to prevent ~8 MB memory spikes on long texts
 - **add-tool-guide consistency** — now uses shared `style.css` and favicon like all other tools
+- **Lightweight share verification** — unlocking a password-protected file share now checks credentials without downloading the file twice
 
 ### Added — Text Fixer tool (`/tools/text-fixer/`)
 - AI-powered spelling and grammar fixer using Llama 3.1 8B via Ollama (ai-01 server)

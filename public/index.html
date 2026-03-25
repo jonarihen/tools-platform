@@ -135,8 +135,18 @@
     async function loadTools() {
       const grid = document.getElementById('grid');
       try {
-        const res = await fetch('/manifest.json');
-        const tools = await res.json();
+        const [manifestRes, disabledRes] = await Promise.all([
+          fetch('/manifest.json'),
+          fetch('/api/admin/disabled-tools').catch(() => ({ ok: false })),
+        ]);
+        let tools = await manifestRes.json();
+
+        // Filter out disabled tools
+        if (disabledRes.ok) {
+          const { disabled } = await disabledRes.json();
+          const disabledSet = new Set(disabled || []);
+          tools = tools.filter(t => !disabledSet.has(t.slug));
+        }
 
         if (!tools.length) {
           grid.innerHTML = `

@@ -350,13 +350,14 @@
 
       try {
         const res = await fetch(
-          `/api/share/${encodeURIComponent(_dlKey)}/download`,
+          `/api/share/${encodeURIComponent(_dlKey)}/verify`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password: pw })
           }
         );
+        const data = await res.json().catch(() => ({}));
         if (res.ok) {
           _unlockedPassword = pw;
           document.getElementById('pwGate').style.display = 'none';
@@ -365,7 +366,7 @@
           document.getElementById('pwError').textContent = 'Incorrect password. Try again.';
           document.getElementById('dlPassword').select();
         } else {
-          document.getElementById('pwError').textContent = 'Something went wrong. Please refresh.';
+          document.getElementById('pwError').textContent = data.error || 'Something went wrong. Please refresh.';
         }
       } catch {
         document.getElementById('pwError').textContent = 'Network error. Please try again.';
@@ -412,7 +413,12 @@
 
     function showDlError(msg) {
       document.getElementById('dlCard').style.display = 'none';
-      document.getElementById('dl-status').innerHTML  = `<div class="status error">${msg}</div>`;
+      const status = document.getElementById('dl-status');
+      status.textContent = '';
+      const box = document.createElement('div');
+      box.className = 'status error';
+      box.textContent = msg;
+      status.appendChild(box);
     }
 
     // ── Upload view ──────────────────────────────────────────────────────────
@@ -598,7 +604,11 @@
     }
 
     function showStatus(msg, type) {
-      statusEl.innerHTML = `<div class="status ${type}">${msg}</div>`;
+      statusEl.textContent = '';
+      const box = document.createElement('div');
+      box.className = 'status ' + type;
+      box.textContent = msg;
+      statusEl.appendChild(box);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -619,5 +629,6 @@
       return `${m}m`;
     }
   </script>
+<script src="/track.js"></script>
 </body>
 </html>

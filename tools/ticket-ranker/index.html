@@ -31,7 +31,19 @@
     }
 
     /* Input phase */
-    .add-row { display: flex; gap: 10px; margin-bottom: 24px; }
+    .add-row { display: flex; gap: 10px; margin-bottom: 12px; }
+    .csv-row { display: flex; gap: 10px; margin-bottom: 24px; }
+    .csv-label {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 10px 18px;
+      background: rgba(255,255,255,0.03);
+      border: 1px dashed rgba(255,255,255,0.1);
+      border-radius: 12px; color: rgba(255,255,255,0.35);
+      font-size: 13px; font-family: 'Outfit', sans-serif;
+      cursor: pointer; transition: all 0.2s; flex: 1; text-align: center;
+    }
+    .csv-label:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.05); }
+    .csv-input { display: none; }
     .add-input {
       flex: 1; padding: 14px 18px;
       background: rgba(255,255,255,0.04);
@@ -195,6 +207,12 @@
                placeholder="Enter a ticket name or description…" autocomplete="off" autofocus>
         <button class="add-btn" id="addBtn">Add</button>
       </div>
+      <div class="csv-row">
+        <label class="csv-label" for="csvInput">
+          📄 Import from CSV
+          <input type="file" id="csvInput" class="csv-input" accept=".csv,.tsv,.txt">
+        </label>
+      </div>
       <div class="ticket-list" id="ticketList"></div>
       <button class="start-btn" id="startBtn" style="display:none">
         Start Ranking (<span id="ticketCount">0</span> tickets) →
@@ -311,6 +329,73 @@
     $('addBtn').addEventListener('click', addTicket);
     $('startBtn').addEventListener('click', startSort);
 
+    // ── CSV import ──────────────────────────────────────────────────────────
+
+    function parseCSVRow(line) {
+      const cells = [];
+      let cur = '', inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+          if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+          else if (ch === '"') { inQuotes = false; }
+          else { cur += ch; }
+        } else {
+          if (ch === '"') { inQuotes = true; }
+          else if (ch === ',') { cells.push(cur); cur = ''; }
+          else { cur += ch; }
+        }
+      }
+      cells.push(cur);
+      return cells.map(c => c.trim());
+    }
+
+    function importCSV(text) {
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (!lines.length) return;
+
+      const firstRow = parseCSVRow(lines[0]);
+      // Detect header row — look for known column names (case-insensitive)
+      const hdr = firstRow.map(c => c.toLowerCase());
+      const titleIdx   = hdr.findIndex(h => h === 'title' || h === 'subject' || h === 'summary' || h === 'ticket title' || h === 'name');
+      const statusIdx  = hdr.findIndex(h => h === 'status');
+      const accountIdx = hdr.findIndex(h => h === 'account' || h === 'client' || h === 'company' || h === 'customer');
+
+      const hasHeader = titleIdx !== -1;
+      const dataLines = hasHeader ? lines.slice(1) : lines;
+
+      let added = 0;
+      for (const line of dataLines) {
+        const cells = parseCSVRow(line);
+        let val = '';
+        if (hasHeader && titleIdx < cells.length) {
+          // Build label: "Title (Account)" or "Title [Status]"
+          val = cells[titleIdx];
+          const parts = [];
+          if (accountIdx !== -1 && cells[accountIdx]) parts.push(cells[accountIdx]);
+          if (statusIdx !== -1 && cells[statusIdx])  parts.push(cells[statusIdx].trim());
+          if (parts.length) val += ' — ' + parts.join(' · ');
+        } else {
+          // No header detected — use first non-empty cell per row
+          val = cells.find(c => c) || '';
+        }
+        val = val.trim();
+        if (val && !tickets.includes(val)) {
+          tickets.push(val);
+          added++;
+        }
+      }
+      renderTicketList();
+    }
+
+    $('csvInput').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => { importCSV(reader.result); $('csvInput').value = ''; };
+      reader.readAsText(file);
+    });
+
     // ── Sort engine ────────────────────────────────────────────────────────────
     function startSort() {
       if (tickets.length < 2) return;
@@ -360,6 +445,10 @@
         if (currentIdx >= tickets.length) {
           setPhase('done');
           renderDone();
+          try {
+            var b = new Blob([JSON.stringify({ slug: 'ticket-ranker', event: 'rank', value: sorted.length })], { type: 'application/json' });
+            navigator.sendBeacon('/api/track', b);
+          } catch (_) {}
           return;
         }
 
@@ -408,5 +497,6 @@
     // ── Init ───────────────────────────────────────────────────────────────────
     renderTicketList();
   </script>
+<script src="/track.js"></script>
 </body>
 </html>

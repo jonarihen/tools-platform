@@ -17,7 +17,9 @@ services:
     environment:
       - QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox
       - QT_QPA_PLATFORM=offscreen
-      - OLLAMA_URL=http://10.10.8.10:11434
+      - OLLAMA_URL=${OLLAMA_URL:-http://10.10.8.10:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}
     volumes:
       - shares-data:/app/shares
     restart: unless-stopped
