@@ -6,6 +6,13 @@ All notable changes to tools.aaris.tech are documented here.
 
 ## [Unreleased]
 
+### Added — Web Novel to PDF tool (`/tools/web-novel-to-pdf/`)
+- Export a supported web novel URL to a tagged PDF for offline TTS and screen readers
+- Royal Road support reads the fiction table of contents, fetches chapters in order, and renders a structured PDF from clean HTML instead of screen-positioned text
+- Optional inclusion of Royal Road author notes in the output
+- Server-side export is rate-limited and restricted to supported hosts to avoid turning the endpoint into a generic fetch proxy
+- Scribble Hub URLs are validated but currently return a clear upstream-blocked error because the site serves a Cloudflare challenge to this server
+
 ### EPUB to PDF accessibility
 - **Tagged PDF output** — EPUB-to-PDF conversion now renders the final PDF with WeasyPrint instead of Calibre's PDF engine, producing tagged PDFs with a structure tree for better screen reader and TTS support
 - **Reading order fix** — conversion now goes through Calibre HTMLZ output first, then renders from HTML order to avoid the broken line ordering produced by Calibre's PDF coordinate system

@@ -1,0 +1,7 @@
+{
+  "name": "Web Novel to PDF",
+  "description": "Turn a supported web novel URL into a tagged PDF for offline TTS and screen readers",
+  "icon": "📚",
+  "tag": "converter",
+  "order": 4
+}

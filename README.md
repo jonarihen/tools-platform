@@ -19,6 +19,7 @@ served through Nginx and Docker Compose.
 |------|-------------|-----|
 | **Text Fixer** | Fix spelling and grammar with AI — powered by Llama 3.1 | `ai` |
 | **EPUB to PDF** | Accessible EPUB to tagged PDF conversion with TTS-friendly reading order | `converter` |
+| **Web Novel to PDF** | Export a supported web novel URL to a tagged PDF for offline TTS | `converter` |
 | **File Share** | Upload a file, get a shareable link — auto-deleted on expiry | `share` |
 | **JSON Formatter** | Paste messy JSON and get it pretty-printed instantly | `dev` |
 | **Unit Converter** | Convert time, data, bandwidth, frequency, power, temperature and more | `utility` |
@@ -47,6 +48,7 @@ served through Nginx and Docker Compose.
 │  Flask / Gunicorn (converter container)   port 5000  │
 │  ├── POST /api/fix-text          → Ollama (ai-01)   │
 │  ├── POST /api/convert/epub-to-pdf → Calibre + WeasyPrint │
+│  ├── POST /api/convert/web-novel-to-pdf → Royal Road + WeasyPrint │
 │  ├── POST /api/share/upload      → SQLite + disk     │
 │  ├── GET  /api/share/<key>/info                      │
 │  ├── POST /api/share/<key>/download                  │
@@ -101,6 +103,7 @@ tools-platform/
 └── tools/                     # Each tool is a self-contained directory
     ├── text-fixer/
     ├── epub-to-pdf/
+    ├── web-novel-to-pdf/
     ├── file-share/
     ├── json-formatter/
     ├── unit-converter/
@@ -164,7 +167,7 @@ The platform is hardened for public-facing deployment:
 | Frontend | Vanilla HTML, CSS, JS · Outfit + JetBrains Mono fonts |
 | Backend | Python 3.12 · Flask · Gunicorn (1 worker, 8 threads) |
 | AI | Ollama · Llama 3.1 8B (Q4_K_M) · Tesla M10 GPU |
-| Conversion | Calibre (EPUB ingest) + WeasyPrint (tagged PDF output) |
+| Conversion | Calibre (EPUB ingest) + WeasyPrint (tagged PDF output) + Royal Road HTML export |
 | Database | SQLite (WAL mode) for file share metadata |
 | Proxy | Nginx (Alpine) |
 | Infra | Docker Compose · named volumes for persistence |

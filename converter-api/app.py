@@ -14,7 +14,9 @@ import html
 import requests as http_requests
 import shutil
 import zipfile
+from bs4 import BeautifulSoup
 from xml.etree import ElementTree as ET
+from urllib.parse import urljoin, urlparse
 from werkzeug.security import generate_password_hash, check_password_hash
 
 logger = logging.getLogger(__name__)
@@ -157,6 +159,17 @@ def _get_active_share(key):
 ALLOWED_PAGE_SIZES = {'a4', 'a5', 'a3', 'letter', 'legal'}
 CALIBRE_TIMEOUT = 900
 WEASYPRINT_TIMEOUT = 900
+WEB_NOVEL_TIMEOUT = 3600
+WEB_NOVEL_FETCH_TIMEOUT = (10, 45)
+WEB_NOVEL_FETCH_DELAY = 0.35
+WEB_NOVEL_MAX_CHAPTERS = 1000
+WEB_NOVEL_RATE_LIMIT = 6
+WEB_NOVEL_RATE_WINDOW = 3600
+WEB_NOVEL_USER_AGENT = 'tools.aaris.tech/1.0 (+https://tools.aaris.tech)'
+ROYALROAD_HOSTS = {'royalroad.com', 'www.royalroad.com'}
+SCRIBBLEHUB_HOSTS = {'scribblehub.com', 'www.scribblehub.com'}
+WEB_NOVEL_HOSTS = ROYALROAD_HOSTS | SCRIBBLEHUB_HOSTS
+WEB_NOVEL_ASSET_SUFFIXES = ('royalroadcdn.com',)
 
 _jobs      = {}
 _jobs_lock = threading.Lock()
@@ -264,10 +277,54 @@ html {{
 }}
 body {{
   line-height: 1.45;
+  color: #111;
+  font-family: serif;
 }}
 .calibre {{
   margin: 0;
   padding: 0;
+}}
+.frontmatter {{
+  text-align: center;
+}}
+.frontmatter h1 {{
+  margin: 0 0 0.5rem;
+  font-size: 2rem;
+}}
+.frontmatter .byline,
+.frontmatter .source-link,
+.frontmatter .count {{
+  color: #444;
+  margin: 0.25rem 0;
+}}
+.summary {{
+  margin: 2rem 0;
+  text-align: left;
+}}
+.book-cover {{
+  display: block;
+  max-height: 16rem;
+  margin: 0 auto 1.5rem;
+}}
+.toc {{
+  margin: 2rem 0;
+  page-break-after: always;
+}}
+.toc ol {{
+  padding-left: 1.25rem;
+}}
+.chapter {{
+  break-before: page;
+}}
+.chapter h2 {{
+  margin-bottom: 1rem;
+}}
+.author-note {{
+  margin-top: 1.5rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #bbb;
+  background: #f5f5f5;
+  font-size: 0.95em;
 }}
 img, svg, table, pre, blockquote {{
   break-inside: avoid;
@@ -279,6 +336,28 @@ h1, h2, h3, h4, h5, h6 {{
 }}
 '''
         )
+
+
+def _run_weasyprint_render(index_path, base_dir, pdf_path, page_size, margin_mm, font_size_pt, job_id):
+    css_path = os.path.join(base_dir, 'render-overrides.css')
+    _write_accessible_stylesheet(css_path, page_size, margin_mm, font_size_pt)
+
+    cmd = [
+        'weasyprint',
+        index_path,
+        pdf_path,
+        '--base-url', base_dir,
+        '--stylesheet', css_path,
+        '--pdf-tags',
+        '--pdf-variant', 'pdf/ua-1',
+        '--presentational-hints',
+        '--custom-metadata',
+        '--full-fonts',
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=WEASYPRINT_TIMEOUT)
+    if result.returncode != 0 or not os.path.exists(pdf_path):
+        logger.error('WeasyPrint failed for job %s: %s', job_id, result.stderr.strip())
+        raise RuntimeError('Accessible PDF rendering failed')
 
 
 def _render_accessible_pdf(job_id, htmlz_path, pdf_path, page_size, margin_mm, font_size_pt):
@@ -295,26 +374,7 @@ def _render_accessible_pdf(job_id, htmlz_path, pdf_path, page_size, margin_mm, f
 
     metadata = _read_htmlz_metadata(extract_dir)
     _patch_htmlz_index(index_path, metadata)
-
-    css_path = os.path.join(extract_dir, 'render-overrides.css')
-    _write_accessible_stylesheet(css_path, page_size, margin_mm, font_size_pt)
-
-    cmd = [
-        'weasyprint',
-        index_path,
-        pdf_path,
-        '--base-url', extract_dir,
-        '--stylesheet', css_path,
-        '--pdf-tags',
-        '--pdf-variant', 'pdf/ua-1',
-        '--presentational-hints',
-        '--custom-metadata',
-        '--full-fonts',
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=WEASYPRINT_TIMEOUT)
-    if result.returncode != 0 or not os.path.exists(pdf_path):
-        logger.error('WeasyPrint failed for job %s: %s', job_id, result.stderr.strip())
-        raise RuntimeError('Accessible PDF rendering failed')
+    _run_weasyprint_render(index_path, extract_dir, pdf_path, page_size, margin_mm, font_size_pt, job_id)
 
 
 def _run_conversion(job_id, epub_path, htmlz_path, pdf_path, cmd, page_size, margin_mm, font_size_pt):
@@ -390,6 +450,415 @@ def start_epub_to_pdf():
     threading.Thread(
         target=_run_conversion,
         args=(job_id, epub_path, htmlz_path, pdf_path, cmd, page_size, margin, font_size),
+        daemon=True,
+    ).start()
+    return {'job_id': job_id}
+
+
+def _safe_pdf_name(title):
+    safe = re.sub(r'[^\w.\-() ]', '_', (title or '').strip())
+    safe = re.sub(r'\s+', ' ', safe).strip(' ._')
+    return (safe or 'web-novel')[:180] + '.pdf'
+
+
+def _host_allowed(hostname, allowed_hosts=None, allowed_suffixes=()):
+    host = (hostname or '').lower().strip('.')
+    if allowed_hosts and host in allowed_hosts:
+        return True
+    for suffix in allowed_suffixes:
+        suffix = suffix.lower().strip('.')
+        if host == suffix or host.endswith('.' + suffix):
+            return True
+    return False
+
+
+def _normalise_web_novel_url(raw_url):
+    url = (raw_url or '').strip()
+    if not url:
+        raise ValueError('No URL provided')
+    if '://' not in url:
+        url = 'https://' + url
+
+    parsed = urlparse(url)
+    host = (parsed.hostname or '').lower().strip('.')
+    if parsed.scheme not in {'http', 'https'}:
+        raise ValueError('URL must use http or https')
+    if parsed.username or parsed.password or parsed.port not in (None, 80, 443):
+        raise ValueError('Unsupported URL format')
+    if host not in WEB_NOVEL_HOSTS:
+        raise ValueError('Only Royal Road and Scribble Hub URLs are supported')
+
+    if host in ROYALROAD_HOSTS:
+        match = re.match(r'^/fiction/(\d+)(/[^/?#]+)?(?:/chapter/\d+/[^/?#]+)?/?$', parsed.path or '')
+        if not match:
+            raise ValueError('Paste a Royal Road fiction or chapter URL')
+        path = f'/fiction/{match.group(1)}{match.group(2) or ""}'
+        host = 'www.royalroad.com'
+    else:
+        path = parsed.path or '/'
+        read_match = re.match(r'^/read/(\d+)-([^/]+)/chapter/\d+/?$', path)
+        if read_match:
+            path = f'/series/{read_match.group(1)}/{read_match.group(2)}/'
+        elif not path.startswith('/series/'):
+            raise ValueError('Paste a Scribble Hub series or chapter URL')
+        host = 'www.scribblehub.com'
+
+    return f'https://{host}{path.rstrip("/")}/', host
+
+
+def _build_web_novel_session():
+    session = http_requests.Session()
+    session.headers.update({
+        'User-Agent': WEB_NOVEL_USER_AGENT,
+        'Accept-Language': 'en-US,en;q=0.8',
+    })
+    return session
+
+
+def _fetch_allowed_response(session, url, allowed_hosts=None, allowed_suffixes=(), max_redirects=4):
+    current_url = url
+    for _ in range(max_redirects + 1):
+        parsed = urlparse(current_url)
+        if parsed.scheme not in {'http', 'https'}:
+            raise RuntimeError('Unsupported redirect scheme')
+        if parsed.username or parsed.password or parsed.port not in (None, 80, 443):
+            raise RuntimeError('Unsupported redirect target')
+        if not _host_allowed(parsed.hostname, allowed_hosts=allowed_hosts, allowed_suffixes=allowed_suffixes):
+            raise RuntimeError('Redirected to an unsupported host')
+
+        response = session.get(current_url, timeout=WEB_NOVEL_FETCH_TIMEOUT, allow_redirects=False)
+        if response.is_redirect or response.is_permanent_redirect:
+            location = response.headers.get('Location')
+            if not location:
+                break
+            current_url = urljoin(current_url, location)
+            continue
+        return response, current_url
+
+    raise RuntimeError('Too many redirects while fetching source')
+
+
+def _extract_json_ld_book(soup):
+    for script in soup.find_all('script', attrs={'type': 'application/ld+json'}):
+        raw = script.string or script.get_text(strip=True)
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        items = data if isinstance(data, list) else [data]
+        for item in items:
+            if isinstance(item, dict):
+                item_type = item.get('@type')
+                if item_type == 'Book' or (isinstance(item_type, list) and 'Book' in item_type):
+                    return item
+    return {}
+
+
+def _sanitise_fragment(node, allow_images=False):
+    if node is None:
+        return ''
+
+    fragment = BeautifulSoup(str(node), 'html.parser')
+    for tag in fragment(['script', 'style', 'noscript', 'iframe', 'form', 'input', 'button', 'textarea', 'svg', 'canvas']):
+        tag.decompose()
+
+    for selector in ('.btn', '.hidden', '.sr-only', '.adsbygoogle', '.chapter-nav', '.nav-buttons'):
+        for el in fragment.select(selector):
+            el.decompose()
+
+    if not allow_images:
+        for tag in fragment.find_all(['img', 'figure', 'figcaption', 'picture', 'video', 'audio', 'source']):
+            tag.decompose()
+
+    for tag in fragment.find_all(True):
+        for attr in (
+            'style', 'class', 'id', 'onclick', 'onload', 'data-page', 'data-id',
+            'role', 'aria-hidden', 'width', 'height'
+        ):
+            tag.attrs.pop(attr, None)
+        if tag.name == 'a':
+            href = tag.get('href')
+            if href:
+                tag['href'] = href
+        if tag.name in {'span', 'font'} and not tag.attrs:
+            tag.unwrap()
+
+    for tag in list(fragment.find_all(['p', 'div'])):
+        if not tag.get_text(' ', strip=True) and not tag.find(['br', 'hr']):
+            tag.decompose()
+
+    return fragment.decode().strip()
+
+
+def _download_cover_asset(session, cover_url, work_dir):
+    if not cover_url:
+        return None
+
+    parsed = urlparse(cover_url)
+    if not _host_allowed(parsed.hostname, allowed_suffixes=WEB_NOVEL_ASSET_SUFFIXES):
+        return None
+
+    response, _ = _fetch_allowed_response(session, cover_url, allowed_suffixes=WEB_NOVEL_ASSET_SUFFIXES)
+    response.raise_for_status()
+
+    content_type = (response.headers.get('Content-Type') or '').lower()
+    ext = '.jpg'
+    if 'png' in content_type:
+        ext = '.png'
+    elif 'webp' in content_type:
+        ext = '.webp'
+
+    filename = 'cover' + ext
+    with open(os.path.join(work_dir, filename), 'wb') as fp:
+        fp.write(response.content)
+    return filename
+
+
+def _extract_royalroad_metadata(series_soup):
+    book = _extract_json_ld_book(series_soup)
+    title = ''
+    author = ''
+    language = 'en'
+    cover_url = ''
+
+    if isinstance(book.get('author'), dict):
+        author = (book['author'].get('name') or '').strip()
+    title = (book.get('name') or '').strip()
+    language = (book.get('inLanguage') or 'en').strip() or 'en'
+    cover_url = (book.get('image') or '').strip()
+
+    if not title:
+        title_el = series_soup.select_one('.fic-header h1') or series_soup.select_one('h1')
+        title = title_el.get_text(' ', strip=True) if title_el else 'Royal Road export'
+
+    if not author:
+        author_el = series_soup.select_one('meta[property="books:author"]')
+        if author_el:
+            author = (author_el.get('content') or '').strip()
+    if not author:
+        author_el = series_soup.select_one('.mt-card-name') or series_soup.select_one('.fic-header h4 a')
+        author = author_el.get_text(' ', strip=True) if author_el else 'Unknown author'
+
+    description_node = series_soup.select_one('.description .hidden-content') or series_soup.select_one('.description')
+    description_html = _sanitise_fragment(description_node)
+    if not description_html:
+        summary = (book.get('description') or '').strip()
+        if summary:
+            description_html = _sanitise_fragment(BeautifulSoup(summary, 'html.parser'))
+
+    return {
+        'title': title,
+        'author': author,
+        'language': language,
+        'cover_url': cover_url,
+        'description_html': description_html,
+    }
+
+
+def _extract_royalroad_chapters(session, series_url, include_author_notes, job_id):
+    response, final_url = _fetch_allowed_response(session, series_url, allowed_hosts=ROYALROAD_HOSTS)
+    response.raise_for_status()
+    series_soup = BeautifulSoup(response.text, 'html.parser')
+
+    metadata = _extract_royalroad_metadata(series_soup)
+    chapter_rows = series_soup.select('#chapters tr.chapter-row')
+    if not chapter_rows:
+        raise RuntimeError('No chapter list found on the Royal Road fiction page')
+    if len(chapter_rows) > WEB_NOVEL_MAX_CHAPTERS:
+        raise RuntimeError(f'This fiction has {len(chapter_rows)} chapters. The per-export limit is {WEB_NOVEL_MAX_CHAPTERS}.')
+
+    chapters = []
+    seen_urls = set()
+    deadline = time.time() + WEB_NOVEL_TIMEOUT
+
+    for index, row in enumerate(chapter_rows, start=1):
+        if time.time() > deadline:
+            raise RuntimeError('Web novel export timed out after 60 minutes')
+
+        link = row.select_one('a[href*="/chapter/"]')
+        if not link:
+            continue
+        chapter_url = urljoin(final_url, link.get('href'))
+        if chapter_url in seen_urls:
+            continue
+        seen_urls.add(chapter_url)
+
+        pct = 10 + int((index / len(chapter_rows)) * 70)
+        _update_job(job_id, progress=pct, message=f'Fetching chapter {index}/{len(chapter_rows)}...')
+
+        chapter_response, _ = _fetch_allowed_response(session, chapter_url, allowed_hosts=ROYALROAD_HOSTS)
+        chapter_response.raise_for_status()
+        chapter_soup = BeautifulSoup(chapter_response.text, 'html.parser')
+
+        title_el = chapter_soup.select_one('.fic-header h1') or chapter_soup.select_one('h1')
+        chapter_title = title_el.get_text(' ', strip=True) if title_el else f'Chapter {index}'
+
+        content_node = chapter_soup.select_one('.chapter-inner.chapter-content') or chapter_soup.select_one('.chapter-content')
+        if content_node is None:
+            raise RuntimeError(f'Could not read chapter {index} from Royal Road')
+
+        note_html = []
+        if include_author_notes:
+            for note in chapter_soup.select('.author-note-portlet .portlet-body'):
+                cleaned = _sanitise_fragment(note)
+                if cleaned and BeautifulSoup(cleaned, 'html.parser').get_text(' ', strip=True):
+                    note_html.append(cleaned)
+
+        chapter_html = _sanitise_fragment(content_node)
+        if not chapter_html or not BeautifulSoup(chapter_html, 'html.parser').get_text(' ', strip=True):
+            raise RuntimeError(f'Chapter {index} did not contain readable text')
+
+        chapters.append({
+            'title': chapter_title,
+            'html': chapter_html,
+            'notes': note_html,
+        })
+
+        if index < len(chapter_rows):
+            time.sleep(WEB_NOVEL_FETCH_DELAY)
+
+    metadata['chapter_count'] = len(chapters)
+    return metadata, chapters
+
+
+def _build_web_novel_html(metadata, chapters, source_url, cover_asset):
+    parts = [
+        '<!DOCTYPE html>',
+        f'<html lang="{html.escape(metadata.get("language") or "en", quote=True)}">',
+        '<head>',
+        '  <meta charset="utf-8">',
+        f'  <title>{html.escape(metadata["title"])}</title>',
+    ]
+
+    author = (metadata.get('author') or '').strip()
+    if author:
+        parts.append(f'  <meta name="author" content="{html.escape(author, quote=True)}">')
+    parts.extend(['</head>', '<body>'])
+
+    parts.append('<section class="frontmatter">')
+    if cover_asset:
+        parts.append(f'  <img class="book-cover" src="{html.escape(cover_asset, quote=True)}" alt="Cover image">')
+    parts.append(f'  <h1>{html.escape(metadata["title"])}</h1>')
+    if author:
+        parts.append(f'  <p class="byline">by {html.escape(author)}</p>')
+    parts.append(f'  <p class="count">{metadata.get("chapter_count", len(chapters))} chapters</p>')
+    parts.append(
+        '  <p class="source-link">Source: '
+        f'<a href="{html.escape(source_url, quote=True)}">{html.escape(source_url)}</a></p>'
+    )
+    description_html = metadata.get('description_html', '').strip()
+    if description_html:
+        parts.append(f'  <section class="summary">{description_html}</section>')
+    parts.append('</section>')
+
+    parts.append('<nav class="toc"><h2>Contents</h2><ol>')
+    for index, chapter in enumerate(chapters, start=1):
+        parts.append(f'  <li><a href="#chapter-{index}">{html.escape(chapter["title"])}</a></li>')
+    parts.append('</ol></nav>')
+
+    for index, chapter in enumerate(chapters, start=1):
+        parts.append(f'<article class="chapter" id="chapter-{index}">')
+        parts.append(f'  <h2>{html.escape(chapter["title"])}</h2>')
+        parts.append(f'  <div class="chapter-body">{chapter["html"]}</div>')
+        for note_html in chapter.get('notes', []):
+            parts.append(f'  <aside class="author-note"><h3>Author Note</h3>{note_html}</aside>')
+        parts.append('</article>')
+
+    parts.append('</body></html>')
+    return '\n'.join(parts)
+
+
+def _render_web_novel_pdf(job_id, source_url, metadata, chapters, pdf_path, page_size, margin_mm, font_size_pt):
+    work_dir = os.path.join(UPLOAD_DIR, f'{job_id}_web')
+    shutil.rmtree(work_dir, ignore_errors=True)
+    os.makedirs(work_dir, exist_ok=True)
+
+    session = _build_web_novel_session()
+    cover_asset = None
+    try:
+        cover_asset = _download_cover_asset(session, metadata.get('cover_url'), work_dir)
+    except Exception:
+        logger.warning('Cover download failed for job %s', job_id, exc_info=True)
+    html_doc = _build_web_novel_html(metadata, chapters, source_url, cover_asset)
+
+    index_path = os.path.join(work_dir, 'index.html')
+    with open(index_path, 'w', encoding='utf-8') as fp:
+        fp.write(html_doc)
+
+    _run_weasyprint_render(index_path, work_dir, pdf_path, page_size, margin_mm, font_size_pt, job_id)
+
+
+def _run_web_novel_conversion(job_id, source_url, pdf_path, include_author_notes, page_size, margin_mm, font_size_pt):
+    try:
+        normalised_url, host = _normalise_web_novel_url(source_url)
+        if host in SCRIBBLEHUB_HOSTS:
+            raise RuntimeError(
+                'Scribble Hub currently blocks automated exports from this server with a Cloudflare challenge. '
+                'Royal Road URLs are supported right now.'
+            )
+
+        session = _build_web_novel_session()
+        _update_job(job_id, progress=5, message='Reading fiction metadata...')
+        metadata, chapters = _extract_royalroad_chapters(session, normalised_url, include_author_notes, job_id)
+        _update_job(job_id, out_name=_safe_pdf_name(metadata['title']))
+
+        _update_job(job_id, progress=90, message='Rendering tagged PDF...')
+        _render_web_novel_pdf(job_id, normalised_url, metadata, chapters, pdf_path, page_size, margin_mm, font_size_pt)
+        _update_job(job_id, status='done', progress=100, message='Conversion complete')
+        try:
+            _track_event_internal('web-novel-to-pdf', 'conversion', len(chapters))
+        except Exception:
+            pass
+    except Exception as e:
+        logger.exception('Web novel conversion failed for job %s', job_id)
+        _update_job(job_id, status='error', message=str(e))
+    finally:
+        shutil.rmtree(os.path.join(UPLOAD_DIR, f'{job_id}_web'), ignore_errors=True)
+
+
+@app.route('/api/convert/web-novel-to-pdf', methods=['POST'])
+def start_web_novel_to_pdf():
+    client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+    if not _check_rate_limit(client_ip, 'web-novel-to-pdf', WEB_NOVEL_RATE_LIMIT, WEB_NOVEL_RATE_WINDOW):
+        return {'error': 'Export limit reached. Please try again later.'}, 429
+
+    source_url = request.form.get('url', '').strip()
+    if not source_url:
+        return {'error': 'No URL provided'}, 400
+
+    try:
+        _, host = _normalise_web_novel_url(source_url)
+    except ValueError as e:
+        return {'error': str(e)}, 400
+    if host in SCRIBBLEHUB_HOSTS:
+        return {
+            'error': 'Scribble Hub currently blocks automated exports from this server with a Cloudflare challenge. Royal Road URLs are supported right now.'
+        }, 503
+
+    page_size = request.form.get('page_size', 'a4').lower()
+    if page_size not in ALLOWED_PAGE_SIZES:
+        page_size = 'a4'
+    margin = ''.join(c for c in request.form.get('margin', '15') if c.isdigit()) or '15'
+    font_size = ''.join(c for c in request.form.get('font_size', '13') if c.isdigit()) or '13'
+    include_author_notes = request.form.get('include_author_notes', '').lower() in {'1', 'true', 'yes', 'on'}
+
+    job_id = str(uuid.uuid4())[:8]
+    pdf_path = os.path.join(UPLOAD_DIR, f'{job_id}.pdf')
+    with _jobs_lock:
+        _jobs[job_id] = {
+            'status': 'converting',
+            'progress': 0,
+            'message': 'Starting export...',
+            'pdf_path': pdf_path,
+            'out_name': 'web-novel.pdf',
+            'created': time.time(),
+        }
+
+    threading.Thread(
+        target=_run_web_novel_conversion,
+        args=(job_id, source_url, pdf_path, include_author_notes, page_size, margin, font_size),
         daemon=True,
     ).start()
     return {'job_id': job_id}
