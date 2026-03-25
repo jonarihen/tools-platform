@@ -6,6 +6,12 @@ All notable changes to tools.aaris.tech are documented here.
 
 ## [Unreleased]
 
+### EPUB to PDF accessibility
+- **Tagged PDF output** — EPUB-to-PDF conversion now renders the final PDF with WeasyPrint instead of Calibre's PDF engine, producing tagged PDFs with a structure tree for better screen reader and TTS support
+- **Reading order fix** — conversion now goes through Calibre HTMLZ output first, then renders from HTML order to avoid the broken line ordering produced by Calibre's PDF coordinate system
+- **Accessible metadata** — generated PDFs now inherit title, author, and language metadata from the EPUB where available, with a fallback document title for PDF/UA generation
+- **Tool copy update** — the EPUB to PDF tool now advertises accessible tagged PDF output instead of page numbers/table-of-contents features that were tied to the old renderer
+
 ### Security hardening
 - **Password hashing** — replaced unsalted SHA-256 with werkzeug's scrypt (salted, constant-time comparison) for file share passwords
 - **Password no longer in URL** — file share download sends password via POST body instead of query parameter, preventing leaks in browser history, server logs, and referer headers

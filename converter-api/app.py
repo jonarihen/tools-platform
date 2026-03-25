@@ -10,7 +10,11 @@ import hashlib
 import sqlite3
 import json
 import logging
+import html
 import requests as http_requests
+import shutil
+import zipfile
+from xml.etree import ElementTree as ET
 from werkzeug.security import generate_password_hash, check_password_hash
 
 logger = logging.getLogger(__name__)
@@ -148,9 +152,11 @@ def _get_active_share(key):
     return row, None
 
 
-# ── EPUB conversion (unchanged) ───────────────────────────────────────────────
+# ── EPUB conversion ───────────────────────────────────────────────────────────
 
 ALLOWED_PAGE_SIZES = {'a4', 'a5', 'a3', 'letter', 'legal'}
+CALIBRE_TIMEOUT = 900
+WEASYPRINT_TIMEOUT = 900
 
 _jobs      = {}
 _jobs_lock = threading.Lock()
@@ -188,7 +194,131 @@ def _parse_line(line):
     return None, line[:100]
 
 
-def _run_conversion(job_id, epub_path, pdf_path, cmd):
+def _read_htmlz_metadata(extract_dir):
+    meta = {'title': '', 'author': '', 'language': 'en'}
+    opf_path = os.path.join(extract_dir, 'metadata.opf')
+    if not os.path.exists(opf_path):
+        return meta
+    try:
+        root = ET.parse(opf_path).getroot()
+    except ET.ParseError:
+        return meta
+
+    ns = {'dc': 'http://purl.org/dc/elements/1.1/'}
+    for field, xpath in (
+        ('title', './/dc:title'),
+        ('author', './/dc:creator'),
+        ('language', './/dc:language'),
+    ):
+        el = root.find(xpath, ns)
+        if el is not None and el.text and el.text.strip():
+            meta[field] = el.text.strip()
+    return meta
+
+
+def _patch_htmlz_index(index_path, metadata):
+    text = ''
+    with open(index_path, 'r', encoding='utf-8', errors='ignore') as fp:
+        text = fp.read()
+
+    lang = metadata.get('language') or 'en'
+
+    def add_lang(match):
+        tag = match.group(0)
+        if ' lang=' in tag.lower():
+            return tag
+        return tag[:-1] + f' lang="{html.escape(lang, quote=True)}">'
+
+    text, html_count = re.subn(r'<html\b[^>]*>', add_lang, text, count=1, flags=re.IGNORECASE)
+    if html_count == 0:
+        text = f'<html lang="{html.escape(lang, quote=True)}">' + text + '</html>'
+
+    title = metadata.get('title', '').strip() or 'Converted EPUB'
+    if title and not re.search(r'<title\b', text, flags=re.IGNORECASE):
+        text = re.sub(
+            r'<head\b[^>]*>',
+            lambda m: m.group(0) + f'<title>{html.escape(title)}</title>',
+            text,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+
+    author = metadata.get('author', '').strip()
+    if author and not re.search(r'<meta\b[^>]+name=["\']author["\']', text, flags=re.IGNORECASE):
+        meta_tag = f'<meta name="author" content="{html.escape(author, quote=True)}" />'
+        text = re.sub(r'</head>', meta_tag + '</head>', text, count=1, flags=re.IGNORECASE)
+
+    with open(index_path, 'w', encoding='utf-8') as fp:
+        fp.write(text)
+
+
+def _write_accessible_stylesheet(css_path, page_size, margin_mm, font_size_pt):
+    with open(css_path, 'w', encoding='utf-8') as fp:
+        fp.write(
+            f'''@page {{
+  size: {page_size};
+  margin: {margin_mm}mm;
+}}
+html {{
+  font-size: {font_size_pt}pt;
+}}
+body {{
+  line-height: 1.45;
+}}
+.calibre {{
+  margin: 0;
+  padding: 0;
+}}
+img, svg, table, pre, blockquote {{
+  break-inside: avoid;
+  max-width: 100%;
+  height: auto;
+}}
+h1, h2, h3, h4, h5, h6 {{
+  break-after: avoid;
+}}
+'''
+        )
+
+
+def _render_accessible_pdf(job_id, htmlz_path, pdf_path, page_size, margin_mm, font_size_pt):
+    extract_dir = os.path.join(UPLOAD_DIR, f'{job_id}_htmlz')
+    shutil.rmtree(extract_dir, ignore_errors=True)
+    os.makedirs(extract_dir, exist_ok=True)
+
+    with zipfile.ZipFile(htmlz_path) as archive:
+        archive.extractall(extract_dir)
+
+    index_path = os.path.join(extract_dir, 'index.html')
+    if not os.path.exists(index_path):
+        raise RuntimeError('Converted book did not contain index.html')
+
+    metadata = _read_htmlz_metadata(extract_dir)
+    _patch_htmlz_index(index_path, metadata)
+
+    css_path = os.path.join(extract_dir, 'render-overrides.css')
+    _write_accessible_stylesheet(css_path, page_size, margin_mm, font_size_pt)
+
+    cmd = [
+        'weasyprint',
+        index_path,
+        pdf_path,
+        '--base-url', extract_dir,
+        '--stylesheet', css_path,
+        '--pdf-tags',
+        '--pdf-variant', 'pdf/ua-1',
+        '--presentational-hints',
+        '--custom-metadata',
+        '--full-fonts',
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=WEASYPRINT_TIMEOUT)
+    if result.returncode != 0 or not os.path.exists(pdf_path):
+        logger.error('WeasyPrint failed for job %s: %s', job_id, result.stderr.strip())
+        raise RuntimeError('Accessible PDF rendering failed')
+
+
+def _run_conversion(job_id, epub_path, htmlz_path, pdf_path, cmd, page_size, margin_mm, font_size_pt):
+    process = None
     try:
         process = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -202,8 +332,10 @@ def _run_conversion(job_id, epub_path, pdf_path, cmd):
                 _update_job(job_id, progress=pct, message=msg)
             else:
                 _update_job(job_id, message=msg)
-        process.wait(timeout=300)
-        if process.returncode == 0 and os.path.exists(pdf_path):
+        process.wait(timeout=CALIBRE_TIMEOUT)
+        if process.returncode == 0 and os.path.exists(htmlz_path):
+            _update_job(job_id, progress=90, message='Rendering tagged PDF...')
+            _render_accessible_pdf(job_id, htmlz_path, pdf_path, page_size, margin_mm, font_size_pt)
             _update_job(job_id, status='done', progress=100, message='Conversion complete')
             try:
                 _track_event_internal('epub-to-pdf', 'conversion', 1)
@@ -212,15 +344,19 @@ def _run_conversion(job_id, epub_path, pdf_path, cmd):
         else:
             _update_job(job_id, status='error', message='Conversion failed')
     except subprocess.TimeoutExpired:
-        process.kill()
-        _update_job(job_id, status='error', message='Conversion timed out after 5 minutes')
+        if process is not None:
+            process.kill()
+        _update_job(job_id, status='error', message='Conversion timed out after 15 minutes')
     except Exception as e:
+        logger.exception('EPUB conversion failed for job %s', job_id)
         _update_job(job_id, status='error', message=str(e))
     finally:
-        try:
-            os.remove(epub_path)
-        except OSError:
-            pass
+        for path in (epub_path, htmlz_path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        shutil.rmtree(os.path.join(UPLOAD_DIR, f'{job_id}_htmlz'), ignore_errors=True)
 
 
 @app.route('/api/convert/epub-to-pdf', methods=['POST'])
@@ -237,19 +373,13 @@ def start_epub_to_pdf():
     font_size = ''.join(c for c in request.form.get('font_size', '13') if c.isdigit()) or '13'
     job_id    = str(uuid.uuid4())[:8]
     epub_path = os.path.join(UPLOAD_DIR, f'{job_id}.epub')
+    htmlz_path = os.path.join(UPLOAD_DIR, f'{job_id}.htmlz')
     pdf_path  = os.path.join(UPLOAD_DIR, f'{job_id}.pdf')
     out_name  = file.filename.rsplit('.', 1)[0] + '.pdf'
     file.save(epub_path)
     cmd = [
-        'ebook-convert', epub_path, pdf_path,
-        '--paper-size', page_size,
-        '--pdf-default-font-size', font_size,
-        '--pdf-page-margin-left',  margin,
-        '--pdf-page-margin-right', margin,
-        '--pdf-page-margin-top',   margin,
-        '--pdf-page-margin-bottom', margin,
-        '--pdf-add-toc',
-        '--pdf-page-numbers',
+        'ebook-convert', epub_path, htmlz_path,
+        '--base-font-size', font_size,
     ]
     with _jobs_lock:
         _jobs[job_id] = {
@@ -257,7 +387,11 @@ def start_epub_to_pdf():
             'message': 'Starting conversion...',
             'pdf_path': pdf_path, 'out_name': out_name, 'created': time.time(),
         }
-    threading.Thread(target=_run_conversion, args=(job_id, epub_path, pdf_path, cmd), daemon=True).start()
+    threading.Thread(
+        target=_run_conversion,
+        args=(job_id, epub_path, htmlz_path, pdf_path, cmd, page_size, margin, font_size),
+        daemon=True,
+    ).start()
     return {'job_id': job_id}
 
 

@@ -1,6 +1,6 @@
 {
   "name": "EPUB to PDF",
-  "description": "High-quality ebook conversion powered by Calibre — with table of contents and page numbers",
+  "description": "Accessible EPUB to tagged PDF conversion with better reading order for TTS and screen readers",
   "icon": "📖",
   "tag": "converter",
   "order": 3
