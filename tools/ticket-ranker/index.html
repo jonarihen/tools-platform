@@ -92,6 +92,19 @@
     }
     .start-btn:hover { background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(245,158,11,0.1)); }
     .hint-text { text-align: center; color: rgba(255,255,255,0.25); font-size: 14px; margin-top: 16px; }
+    .mode-toggle {
+      display: none; align-items: flex-start; gap: 12px;
+      padding: 14px 16px; margin-bottom: 24px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+    }
+    .mode-toggle input {
+      margin-top: 2px; width: 16px; height: 16px; accent-color: #f59e0b;
+      flex-shrink: 0;
+    }
+    .mode-copy { font-size: 14px; color: rgba(255,255,255,0.78); }
+    .mode-note { display: block; margin-top: 4px; color: rgba(255,255,255,0.38); font-size: 13px; line-height: 1.5; }
 
     /* Sorting phase */
     .progress-track {
@@ -127,7 +140,7 @@
       font-size: 13px; font-weight: 700;
       color: rgba(255,255,255,0.2); letter-spacing: 0.1em;
     }
-    .choice-text { font-size: 17px; font-weight: 500; line-height: 1.4; word-break: break-word; }
+    .choice-text { font-size: 17px; font-weight: 500; line-height: 1.4; word-break: break-word; white-space: pre-line; }
     .choice-hint { font-size: 12px; color: rgba(255,255,255,0.2); font-weight: 300; }
     .vs-badge {
       width: 44px; height: 44px; border-radius: 50%;
@@ -138,6 +151,9 @@
       font-family: 'JetBrains Mono', monospace;
       color: rgba(255,255,255,0.3); flex-shrink: 0;
     }
+    .group-grid { display: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .group-grid.active { display: grid; }
+    .group-choice { min-height: 140px; }
     .sort-tip { text-align: center; font-size: 13px; color: rgba(255,255,255,0.2); }
 
     /* Done phase */
@@ -186,6 +202,11 @@
       font-family: 'Outfit', sans-serif; cursor: pointer; transition: all 0.2s;
     }
     .btn-primary:hover { background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(245,158,11,0.1)); }
+    @media (max-width: 640px) {
+      .vs-row { flex-direction: column; }
+      .vs-badge { width: 100%; height: auto; padding: 10px 0; border-radius: 12px; }
+      .group-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -214,6 +235,13 @@
         </label>
       </div>
       <div class="ticket-list" id="ticketList"></div>
+      <label class="mode-toggle" id="fastModeWrap">
+        <input type="checkbox" id="fastModeToggle" checked>
+        <span class="mode-copy">
+          Use fast mode for 16+ tickets
+          <span class="mode-note">Ranks 4 tickets at a time first, then orders those groups. Much faster, but slightly rougher than a full exact pass.</span>
+        </span>
+      </label>
       <button class="start-btn" id="startBtn" style="display:none">
         Start Ranking (<span id="ticketCount">0</span> tickets) →
       </button>
@@ -231,16 +259,17 @@
         <button class="choice-btn a" id="choiceA">
           <span class="choice-label">A</span>
           <span class="choice-text" id="itemA"></span>
-          <span class="choice-hint">Click if more important</span>
+          <span class="choice-hint" id="choiceAHint">← left arrow or click</span>
         </button>
         <div class="vs-badge">VS</div>
         <button class="choice-btn b" id="choiceB">
           <span class="choice-label">B</span>
           <span class="choice-text" id="itemB"></span>
-          <span class="choice-hint">Click if more important</span>
+          <span class="choice-hint" id="choiceBHint">→ right arrow or click</span>
         </button>
       </div>
-      <p class="sort-tip">💡 Uses binary search — minimal comparisons needed</p>
+      <div class="group-grid" id="groupGrid"></div>
+      <p class="sort-tip" id="sortTip">💡 Uses binary insertion — use ← and → to choose faster</p>
     </div>
 
     <!-- Done phase -->
@@ -257,15 +286,28 @@
   <script>
     // ── State ──────────────────────────────────────────────────────────────────
     let tickets = [];
-    let sorted  = [];
+    let activeItems = [];
+    let sorted = [];
     let currentIdx = 0;
     let lo = 0, hi = 0;
     let doneComparisons = 0, totalComparisons = 0;
+    let sortMode = 'exact';
+    let sortStep = 'pair';
+    let groupedTickets = [];
+    let currentGroup = [];
+    let rankedCurrentGroup = [];
+    let currentGroupIndex = 0;
+    let sortedGroups = [];
 
     function estimateComparisons(n) {
       let est = 0;
       for (let i = 1; i < n; i++) est += Math.ceil(Math.log2(i + 1));
       return est;
+    }
+
+    function estimateFastComparisons(n) {
+      const groups = Math.ceil(n / 4);
+      return (n - groups) + estimateComparisons(groups);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
@@ -286,11 +328,35 @@
       $('phase' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
 
       const subtitles = {
-        input:   'Add your tickets, then sort by comparing pairs',
-        sorting: 'Which ticket is more important?',
-        done:    "Here's your prioritized order",
+        input: 'Add your tickets, then sort by comparing pairs',
+        sorting: sortMode === 'fast' ? 'Pick the most important ticket in each step' : 'Which ticket is more important?',
+        done: sortMode === 'fast' ? "Here's your fast-ranked order" : "Here's your prioritized order",
       };
       $('subtitle').textContent = subtitles[name];
+    }
+
+    function trackRankEvent() {
+      try {
+        var b = new Blob([JSON.stringify({ slug: 'ticket-ranker', event: 'rank', value: sorted.length })], { type: 'application/json' });
+        navigator.sendBeacon('/api/track', b);
+      } catch (_) {}
+    }
+
+    function finishSort() {
+      if (sortMode === 'fast' && sortStep === 'group-rank') {
+        sorted = sortedGroups.flat();
+      }
+      setPhase('done');
+      renderDone();
+      trackRankEvent();
+    }
+
+    function formatChoiceText(entry) {
+      if (Array.isArray(entry)) {
+        const preview = entry.slice(1, 4).join(' · ');
+        return preview ? `${entry[0]}\n${preview}` : entry[0];
+      }
+      return entry;
     }
 
     // ── Input phase ────────────────────────────────────────────────────────────
@@ -312,8 +378,9 @@
 
       const n = tickets.length;
       $('ticketCount').textContent = n;
-      $('startBtn').style.display  = n >= 2 ? '' : 'none';
-      $('hintText').style.display  = n === 1 ? '' : 'none';
+      $('startBtn').style.display = n >= 2 ? '' : 'none';
+      $('hintText').style.display = n === 1 ? '' : 'none';
+      $('fastModeWrap').style.display = n >= 16 ? 'flex' : 'none';
     }
 
     function addTicket() {
@@ -329,7 +396,7 @@
     $('addBtn').addEventListener('click', addTicket);
     $('startBtn').addEventListener('click', startSort);
 
-    // ── CSV import ──────────────────────────────────────────────────────────
+    // ── CSV import ─────────────────────────────────────────────────────────────
 
     function parseCSVRow(line) {
       const cells = [];
@@ -355,35 +422,28 @@
       if (!lines.length) return;
 
       const firstRow = parseCSVRow(lines[0]);
-      // Detect header row — look for known column names (case-insensitive)
       const hdr = firstRow.map(c => c.toLowerCase());
-      const titleIdx   = hdr.findIndex(h => h === 'title' || h === 'subject' || h === 'summary' || h === 'ticket title' || h === 'name');
-      const statusIdx  = hdr.findIndex(h => h === 'status');
+      const titleIdx = hdr.findIndex(h => h === 'title' || h === 'subject' || h === 'summary' || h === 'ticket title' || h === 'name');
+      const statusIdx = hdr.findIndex(h => h === 'status');
       const accountIdx = hdr.findIndex(h => h === 'account' || h === 'client' || h === 'company' || h === 'customer');
 
       const hasHeader = titleIdx !== -1;
       const dataLines = hasHeader ? lines.slice(1) : lines;
 
-      let added = 0;
       for (const line of dataLines) {
         const cells = parseCSVRow(line);
         let val = '';
         if (hasHeader && titleIdx < cells.length) {
-          // Build label: "Title (Account)" or "Title [Status]"
           val = cells[titleIdx];
           const parts = [];
           if (accountIdx !== -1 && cells[accountIdx]) parts.push(cells[accountIdx]);
-          if (statusIdx !== -1 && cells[statusIdx])  parts.push(cells[statusIdx].trim());
+          if (statusIdx !== -1 && cells[statusIdx]) parts.push(cells[statusIdx].trim());
           if (parts.length) val += ' — ' + parts.join(' · ');
         } else {
-          // No header detected — use first non-empty cell per row
           val = cells.find(c => c) || '';
         }
         val = val.trim();
-        if (val && !tickets.includes(val)) {
-          tickets.push(val);
-          added++;
-        }
+        if (val && !tickets.includes(val)) tickets.push(val);
       }
       renderTicketList();
     }
@@ -397,64 +457,172 @@
     });
 
     // ── Sort engine ────────────────────────────────────────────────────────────
-    function startSort() {
-      if (tickets.length < 2) return;
-      totalComparisons = estimateComparisons(tickets.length);
-      doneComparisons  = 0;
-      sorted       = [tickets[0]];
-      currentIdx   = 1;
+    function startExactSort(items) {
+      sortMode = 'exact';
+      sortStep = 'pair';
+      activeItems = items.slice();
+      totalComparisons = estimateComparisons(activeItems.length);
+      doneComparisons = 0;
+      sorted = [activeItems[0]];
+      currentIdx = 1;
       lo = 0;
       hi = 0;
       setPhase('sorting');
       renderSorting();
     }
 
+    function startFastSort() {
+      sortMode = 'fast';
+      sortStep = 'group-pick';
+      doneComparisons = 0;
+      totalComparisons = estimateFastComparisons(tickets.length);
+      groupedTickets = [];
+      for (let i = 0; i < tickets.length; i += 4) groupedTickets.push(tickets.slice(i, i + 4));
+      currentGroupIndex = -1;
+      currentGroup = [];
+      rankedCurrentGroup = [];
+      sortedGroups = [];
+      sorted = [];
+      setPhase('sorting');
+      advanceToNextGroupSelection();
+    }
+
+    function startSort() {
+      if (tickets.length < 2) return;
+      if (tickets.length >= 16 && $('fastModeToggle').checked) {
+        startFastSort();
+      } else {
+        startExactSort(tickets);
+      }
+    }
+
+    function advanceToNextGroupSelection() {
+      currentGroupIndex++;
+      while (currentGroupIndex < groupedTickets.length && groupedTickets[currentGroupIndex].length <= 1) {
+        currentGroupIndex++;
+      }
+
+      if (currentGroupIndex >= groupedTickets.length) {
+        if (groupedTickets.length <= 1) {
+          sorted = groupedTickets[0] ? groupedTickets[0].slice() : [];
+          finishSort();
+        } else {
+          sortStep = 'group-rank';
+          sortedGroups = [groupedTickets[0].slice()];
+          currentIdx = 1;
+          lo = 0;
+          hi = 0;
+          renderSorting();
+        }
+        return;
+      }
+
+      currentGroup = groupedTickets[currentGroupIndex].slice();
+      rankedCurrentGroup = [];
+      sortStep = 'group-pick';
+      renderSorting();
+    }
+
+    function chooseGroupCandidate(idx) {
+      if (sortStep !== 'group-pick' || idx < 0 || idx >= currentGroup.length) return;
+      doneComparisons++;
+      rankedCurrentGroup.push(currentGroup.splice(idx, 1)[0]);
+
+      if (currentGroup.length === 1) {
+        rankedCurrentGroup.push(currentGroup[0]);
+        groupedTickets[currentGroupIndex] = rankedCurrentGroup.slice();
+        advanceToNextGroupSelection();
+        return;
+      }
+
+      renderSorting();
+    }
+
+    function renderPairComparison(currentEntry, compareEntry, tip) {
+      $('groupGrid').classList.remove('active');
+      $('groupGrid').innerHTML = '';
+      $('vsRow').style.display = 'flex';
+      $('itemA').textContent = formatChoiceText(currentEntry);
+      $('itemB').textContent = formatChoiceText(compareEntry);
+      $('choiceAHint').textContent = '← left arrow or click';
+      $('choiceBHint').textContent = '→ right arrow or click';
+      $('sortTip').textContent = tip;
+
+      const vsRow = $('vsRow');
+      vsRow.style.animation = 'none';
+      vsRow.offsetHeight;
+      vsRow.style.animation = 'fadeSlideIn 0.35s ease';
+    }
+
     function renderSorting() {
       const pct = totalComparisons > 0
         ? Math.min(100, Math.round((doneComparisons / totalComparisons) * 100))
         : 0;
-      $('progressFill').style.width   = pct + '%';
-      $('progressLabel').textContent  = `~${pct}% complete · comparison ${doneComparisons + 1}`;
+
+      let stepLabel = `comparison ${doneComparisons + 1}`;
+      if (sortMode === 'fast' && sortStep === 'group-pick') stepLabel = `group pick ${doneComparisons + 1}`;
+      if (sortMode === 'fast' && sortStep === 'group-rank') stepLabel = `group comparison ${doneComparisons + 1}`;
+
+      $('progressFill').style.width = pct + '%';
+      $('progressLabel').textContent = `~${pct}% complete · ${stepLabel}`;
+
+      if (sortMode === 'fast' && sortStep === 'group-pick') {
+        $('vsRow').style.display = 'none';
+        $('groupGrid').classList.add('active');
+        $('groupGrid').innerHTML = currentGroup.map((ticket, idx) => `
+          <button class="choice-btn group-choice" data-idx="${idx}">
+            <span class="choice-label">${idx + 1}</span>
+            <span class="choice-text">${escHtml(ticket)}</span>
+            <span class="choice-hint">Press ${idx + 1} or click</span>
+          </button>
+        `).join('');
+        $('groupGrid').querySelectorAll('.group-choice').forEach(btn => {
+          btn.addEventListener('click', () => chooseGroupCandidate(+btn.dataset.idx));
+        });
+        $('sortTip').textContent = 'Fast mode: pick the most important ticket in this group. Use number keys 1-4.';
+        return;
+      }
 
       const mid = Math.floor((lo + hi) / 2);
-      $('itemA').textContent = tickets[currentIdx];
-      $('itemB').textContent = sorted[mid];
+      if (sortMode === 'fast' && sortStep === 'group-rank') {
+        renderPairComparison(
+          groupedTickets[currentIdx],
+          sortedGroups[mid],
+          'Fast mode: compare the leading ticket from each 4-ticket block. Use ← and →.'
+        );
+        return;
+      }
 
-      // Re-trigger animation on each new comparison
-      const vsRow = $('vsRow');
-      vsRow.style.animation = 'none';
-      vsRow.offsetHeight; // force reflow
-      vsRow.style.animation = 'fadeSlideIn 0.35s ease';
+      renderPairComparison(
+        activeItems[currentIdx],
+        sorted[mid],
+        'Uses binary insertion — use ← and → to choose faster.'
+      );
     }
 
     function choose(pickedCurrent) {
+      if (sortMode === 'fast' && sortStep === 'group-pick') return;
+
+      const targetList = sortMode === 'fast' && sortStep === 'group-rank' ? sortedGroups : sorted;
+      const candidate = sortMode === 'fast' && sortStep === 'group-rank' ? groupedTickets[currentIdx] : activeItems[currentIdx];
       const mid = Math.floor((lo + hi) / 2);
       doneComparisons++;
 
-      if (pickedCurrent) {
-        hi = mid - 1;  // current goes before mid → search left half
-      } else {
-        lo = mid + 1;  // mid is more important → search right half
-      }
+      if (pickedCurrent) hi = mid - 1;
+      else lo = mid + 1;
 
       if (lo > hi) {
-        // Found insertion point
-        sorted.splice(lo, 0, tickets[currentIdx]);
+        targetList.splice(lo, 0, candidate);
         currentIdx++;
 
-        if (currentIdx >= tickets.length) {
-          setPhase('done');
-          renderDone();
-          try {
-            var b = new Blob([JSON.stringify({ slug: 'ticket-ranker', event: 'rank', value: sorted.length })], { type: 'application/json' });
-            navigator.sendBeacon('/api/track', b);
-          } catch (_) {}
+        const totalItems = sortMode === 'fast' && sortStep === 'group-rank' ? groupedTickets.length : activeItems.length;
+        if (currentIdx >= totalItems) {
+          finishSort();
           return;
         }
 
-        // Set up next item's binary search
         lo = 0;
-        hi = sorted.length - 1;
+        hi = targetList.length - 1;
       }
 
       renderSorting();
@@ -463,8 +631,30 @@
     $('choiceA').addEventListener('click', () => choose(true));
     $('choiceB').addEventListener('click', () => choose(false));
 
+    document.addEventListener('keydown', e => {
+      if (!$('phaseSorting').classList.contains('active')) return;
+
+      if (sortMode === 'fast' && sortStep === 'group-pick') {
+        const idx = Number(e.key) - 1;
+        if (idx >= 0 && idx < currentGroup.length) {
+          e.preventDefault();
+          chooseGroupCandidate(idx);
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        choose(true);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        choose(false);
+      }
+    });
+
     // ── Done phase ─────────────────────────────────────────────────────────────
     function renderDone() {
+      $('reRankBtn').textContent = sortMode === 'fast' ? 'Re-rank exact' : 'Re-rank same tickets';
       $('resultsList').innerHTML = sorted.map((t, i) => {
         const rankClass = i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : 'rank-other';
         return `
@@ -478,14 +668,24 @@
     }
 
     $('reRankBtn').addEventListener('click', () => {
-      sorted = []; currentIdx = 0; doneComparisons = 0;
+      activeItems = [];
+      sorted = [];
+      sortedGroups = [];
+      currentIdx = 0;
+      doneComparisons = 0;
+      if (sortMode === 'fast') $('fastModeToggle').checked = false;
       setPhase('input');
-      renderTicketList(); // refresh count/button state
+      renderTicketList();
     });
 
     $('resetBtn').addEventListener('click', () => {
-      tickets = []; sorted = [];
+      tickets = [];
+      activeItems = [];
+      sorted = [];
+      groupedTickets = [];
+      sortedGroups = [];
       renderTicketList();
+      $('fastModeToggle').checked = true;
       setPhase('input');
     });
 

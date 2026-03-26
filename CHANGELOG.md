@@ -6,6 +6,11 @@ All notable changes to tools.aaris.tech are documented here.
 
 ## [Unreleased]
 
+### Ticket Ranker improvements
+- **Keyboard ranking** — the ranking screen now supports `←` and `→` so you can pick the left or right ticket without leaving the keyboard
+- **Fast mode for large lists** — for 16+ tickets, the tool can now pre-rank tickets in groups of 4 before ordering those groups, cutting the number of decisions for long queues
+- **Clearer ranking UI** — the sorter now shows the active key hints on-screen and lets you re-rank a fast-mode result with a full exact pass
+
 ### Added — Web Novel to PDF tool (`/tools/web-novel-to-pdf/`)
 - Export a supported web novel URL to a tagged PDF for offline TTS and screen readers
 - Royal Road support reads the fiction table of contents, fetches chapters in order, and renders a structured PDF from clean HTML instead of screen-positioned text

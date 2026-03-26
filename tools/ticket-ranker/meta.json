@@ -1,6 +1,6 @@
 {
   "name": "Ticket Ranker",
-  "description": "Prioritize tickets with pairwise comparisons using binary insertion sort",
+  "description": "Prioritize tickets with arrow-key shortcuts and an optional 4-ticket fast mode for larger lists",
   "icon": "⚡",
   "tag": "productivity",
   "order": 1

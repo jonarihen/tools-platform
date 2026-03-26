@@ -25,7 +25,7 @@ served through Nginx and Docker Compose.
 | **Unit Converter** | Convert time, data, bandwidth, frequency, power, temperature and more | `utility` |
 | **Date Calculator** | Add/subtract time from a date, or find the difference between two | `utility` |
 | **Download Time Calculator** | Estimate download duration based on speed and file size | `utility` |
-| **Ticket Ranker** | Prioritize tickets with pairwise comparisons | `productivity` |
+| **Ticket Ranker** | Prioritize tickets with arrow-key shortcuts and an optional fast mode for larger lists | `productivity` |
 
 ## Architecture
 
