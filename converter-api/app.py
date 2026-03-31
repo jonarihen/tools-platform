@@ -169,7 +169,7 @@ WEB_NOVEL_USER_AGENT = 'tools.aaris.tech/1.0 (+https://tools.aaris.tech)'
 ROYALROAD_HOSTS = {'royalroad.com', 'www.royalroad.com'}
 SCRIBBLEHUB_HOSTS = {'scribblehub.com', 'www.scribblehub.com'}
 WEB_NOVEL_HOSTS = ROYALROAD_HOSTS | SCRIBBLEHUB_HOSTS
-WEB_NOVEL_ASSET_SUFFIXES = ('royalroadcdn.com',)
+WEB_NOVEL_ASSET_SUFFIXES = ('royalroadcdn.com', 'scribblehub.com')
 
 _jobs      = {}
 _jobs_lock = threading.Lock()
@@ -723,6 +723,148 @@ def _extract_royalroad_chapters(session, series_url, include_author_notes, job_i
     return metadata, chapters
 
 
+def _extract_scribblehub_metadata(series_soup):
+    title = ''
+    author = ''
+    cover_url = ''
+    language = 'en'
+
+    title_el = series_soup.select_one('.fic_title')
+    if not title_el:
+        title_el = series_soup.select_one('h1')
+    title = title_el.get_text(' ', strip=True) if title_el else 'Scribble Hub export'
+
+    author_el = series_soup.select_one('.auth_name_fic a') or series_soup.select_one('.auth_name_fic')
+    author = author_el.get_text(' ', strip=True) if author_el else 'Unknown author'
+
+    cover_el = series_soup.select_one('.fic_image img')
+    if cover_el:
+        cover_url = (cover_el.get('src') or '').strip()
+
+    desc_node = series_soup.select_one('.wi_fic_desc')
+    description_html = _sanitise_fragment(desc_node)
+
+    html_el = series_soup.select_one('html')
+    if html_el and html_el.get('lang'):
+        language = html_el['lang'].split('-')[0].strip() or 'en'
+
+    return {
+        'title': title,
+        'author': author,
+        'language': language,
+        'cover_url': cover_url,
+        'description_html': description_html,
+    }
+
+
+def _fetch_scribblehub_toc(session, series_id):
+    ajax_url = 'https://www.scribblehub.com/wp-admin/admin-ajax.php'
+    toc = []
+    page = 1
+
+    while page <= 200:
+        resp = session.post(ajax_url, data={
+            'action': 'wi_getreleases_pagination',
+            'pagenum': str(page),
+            'mypostid': str(series_id),
+            'mypostid2': '0',
+            'myorder': 'asc',
+        }, timeout=WEB_NOVEL_FETCH_TIMEOUT)
+        resp.raise_for_status()
+
+        text = resp.text.strip()
+        if not text or text in ('0', '-1'):
+            break
+
+        soup = BeautifulSoup(text, 'html.parser')
+        links = soup.select('li.toc_w a.toc_a') or soup.select('a[href*="/read/"]')
+        if not links:
+            break
+
+        for link in links:
+            href = link.get('href', '').strip()
+            title = link.get_text(' ', strip=True)
+            if href:
+                toc.append({'url': href, 'title': title})
+
+        page += 1
+        time.sleep(WEB_NOVEL_FETCH_DELAY)
+
+    return toc
+
+
+def _extract_scribblehub_chapters(session, series_url, include_author_notes, job_id):
+    response, final_url = _fetch_allowed_response(session, series_url, allowed_hosts=SCRIBBLEHUB_HOSTS)
+    response.raise_for_status()
+    series_soup = BeautifulSoup(response.text, 'html.parser')
+
+    metadata = _extract_scribblehub_metadata(series_soup)
+
+    id_match = re.match(r'^/series/(\d+)/', urlparse(final_url).path)
+    if not id_match:
+        raise RuntimeError('Could not determine Scribble Hub series ID')
+    series_id = id_match.group(1)
+
+    _update_job(job_id, progress=8, message='Fetching table of contents...')
+    toc = _fetch_scribblehub_toc(session, series_id)
+    if not toc:
+        raise RuntimeError('No chapters found on the Scribble Hub series page')
+    if len(toc) > WEB_NOVEL_MAX_CHAPTERS:
+        raise RuntimeError(
+            f'This series has {len(toc)} chapters. The per-export limit is {WEB_NOVEL_MAX_CHAPTERS}.'
+        )
+
+    chapters = []
+    seen_urls = set()
+    deadline = time.time() + WEB_NOVEL_TIMEOUT
+
+    for index, info in enumerate(toc, start=1):
+        if time.time() > deadline:
+            raise RuntimeError('Web novel export timed out after 60 minutes')
+
+        chapter_url = urljoin(final_url, info['url'])
+        if chapter_url in seen_urls:
+            continue
+        seen_urls.add(chapter_url)
+
+        pct = 10 + int((index / len(toc)) * 70)
+        _update_job(job_id, progress=pct, message=f'Fetching chapter {index}/{len(toc)}...')
+
+        chapter_response, _ = _fetch_allowed_response(session, chapter_url, allowed_hosts=SCRIBBLEHUB_HOSTS)
+        chapter_response.raise_for_status()
+        chapter_soup = BeautifulSoup(chapter_response.text, 'html.parser')
+
+        title_el = chapter_soup.select_one('.chapter-title') or chapter_soup.select_one('h1')
+        chapter_title = title_el.get_text(' ', strip=True) if title_el else info.get('title') or f'Chapter {index}'
+
+        content_node = chapter_soup.select_one('#chp_raw') or chapter_soup.select_one('.chp_raw')
+        if content_node is None:
+            raise RuntimeError(f'Could not read chapter {index} from Scribble Hub')
+
+        note_html = []
+        if include_author_notes:
+            for note in chapter_soup.select('.wi_authornotes'):
+                cleaned = _sanitise_fragment(note)
+                if cleaned and BeautifulSoup(cleaned, 'html.parser').get_text(' ', strip=True):
+                    note_html.append(cleaned)
+
+        chapter_html = _sanitise_fragment(content_node)
+        if not chapter_html or not BeautifulSoup(chapter_html, 'html.parser').get_text(' ', strip=True):
+            raise RuntimeError(f'Chapter {index} did not contain readable text')
+
+        chapters.append({
+            'title': chapter_title,
+            'html': chapter_html,
+            'notes': note_html,
+        })
+
+        if index < len(toc):
+            time.sleep(WEB_NOVEL_FETCH_DELAY)
+
+    metadata['chapter_count'] = len(chapters)
+    return metadata, chapters
+
+
 def _build_web_novel_html(metadata, chapters, source_url, cover_asset):
     parts = [
         '<!DOCTYPE html>',
@@ -793,15 +935,13 @@ def _render_web_novel_pdf(job_id, source_url, metadata, chapters, pdf_path, page
 def _run_web_novel_conversion(job_id, source_url, pdf_path, include_author_notes, page_size, margin_mm, font_size_pt):
     try:
         normalised_url, host = _normalise_web_novel_url(source_url)
-        if host in SCRIBBLEHUB_HOSTS:
-            raise RuntimeError(
-                'Scribble Hub currently blocks automated exports from this server with a Cloudflare challenge. '
-                'Royal Road URLs are supported right now.'
-            )
 
         session = _build_web_novel_session()
         _update_job(job_id, progress=5, message='Reading fiction metadata...')
-        metadata, chapters = _extract_royalroad_chapters(session, normalised_url, include_author_notes, job_id)
+        if host in SCRIBBLEHUB_HOSTS:
+            metadata, chapters = _extract_scribblehub_chapters(session, normalised_url, include_author_notes, job_id)
+        else:
+            metadata, chapters = _extract_royalroad_chapters(session, normalised_url, include_author_notes, job_id)
         _update_job(job_id, out_name=_safe_pdf_name(metadata['title']))
 
         _update_job(job_id, progress=90, message='Rendering tagged PDF...')
@@ -829,13 +969,9 @@ def start_web_novel_to_pdf():
         return {'error': 'No URL provided'}, 400
 
     try:
-        _, host = _normalise_web_novel_url(source_url)
+        _normalise_web_novel_url(source_url)
     except ValueError as e:
         return {'error': str(e)}, 400
-    if host in SCRIBBLEHUB_HOSTS:
-        return {
-            'error': 'Scribble Hub currently blocks automated exports from this server with a Cloudflare challenge. Royal Road URLs are supported right now.'
-        }, 503
 
     page_size = request.form.get('page_size', 'a4').lower()
     if page_size not in ALLOWED_PAGE_SIZES:
