@@ -162,6 +162,8 @@ WEASYPRINT_TIMEOUT = 900
 WEB_NOVEL_TIMEOUT = 3600
 WEB_NOVEL_FETCH_TIMEOUT = (10, 45)
 WEB_NOVEL_FETCH_DELAY = 0.35
+WEB_NOVEL_FETCH_RETRIES = 3
+WEB_NOVEL_RETRY_BACKOFF = 2
 WEB_NOVEL_MAX_CHAPTERS = 1000
 WEB_NOVEL_RATE_LIMIT = 6
 WEB_NOVEL_RATE_WINDOW = 3600
@@ -538,6 +540,50 @@ def _fetch_allowed_response(session, url, allowed_hosts=None, allowed_suffixes=(
     raise RuntimeError('Too many redirects while fetching source')
 
 
+def _check_cloudflare(response):
+    if response.status_code in (403, 503):
+        text = response.text[:2000].lower()
+        if any(s in text for s in ('cf-browser-verification', 'just a moment', 'cf-challenge-running')):
+            raise RuntimeError(
+                'Blocked by a Cloudflare browser challenge — '
+                'the source site is restricting automated access'
+            )
+
+
+def _retry_fetch(fn):
+    for attempt in range(WEB_NOVEL_FETCH_RETRIES):
+        retryable = attempt < WEB_NOVEL_FETCH_RETRIES - 1
+        try:
+            result = fn()
+        except (http_requests.ConnectionError, http_requests.Timeout):
+            if retryable:
+                time.sleep(WEB_NOVEL_RETRY_BACKOFF * (2 ** attempt))
+                continue
+            raise RuntimeError(
+                f'Connection to the source site failed after {WEB_NOVEL_FETCH_RETRIES} attempts'
+            )
+
+        response = result[0] if isinstance(result, tuple) else result
+        _check_cloudflare(response)
+
+        if response.status_code == 429:
+            if retryable:
+                time.sleep(WEB_NOVEL_RETRY_BACKOFF * (2 ** attempt))
+                continue
+            raise RuntimeError('Rate limited by the source site — please try again later')
+
+        if response.status_code >= 500:
+            if retryable:
+                time.sleep(WEB_NOVEL_RETRY_BACKOFF * (2 ** attempt))
+                continue
+            raise RuntimeError(f'Source site returned a server error (HTTP {response.status_code})')
+
+        response.raise_for_status()
+        return result
+
+    raise RuntimeError('Fetch failed after retries')
+
+
 def _extract_json_ld_book(soup):
     for script in soup.find_all('script', attrs={'type': 'application/ld+json'}):
         raw = script.string or script.get_text(strip=True)
@@ -658,8 +704,9 @@ def _extract_royalroad_metadata(series_soup):
 
 
 def _extract_royalroad_chapters(session, series_url, include_author_notes, job_id):
-    response, final_url = _fetch_allowed_response(session, series_url, allowed_hosts=ROYALROAD_HOSTS)
-    response.raise_for_status()
+    response, final_url = _retry_fetch(
+        lambda: _fetch_allowed_response(session, series_url, allowed_hosts=ROYALROAD_HOSTS)
+    )
     series_soup = BeautifulSoup(response.text, 'html.parser')
 
     metadata = _extract_royalroad_metadata(series_soup)
@@ -688,8 +735,9 @@ def _extract_royalroad_chapters(session, series_url, include_author_notes, job_i
         pct = 10 + int((index / len(chapter_rows)) * 70)
         _update_job(job_id, progress=pct, message=f'Fetching chapter {index}/{len(chapter_rows)}...')
 
-        chapter_response, _ = _fetch_allowed_response(session, chapter_url, allowed_hosts=ROYALROAD_HOSTS)
-        chapter_response.raise_for_status()
+        chapter_response, _ = _retry_fetch(
+            lambda: _fetch_allowed_response(session, chapter_url, allowed_hosts=ROYALROAD_HOSTS)
+        )
         chapter_soup = BeautifulSoup(chapter_response.text, 'html.parser')
 
         title_el = chapter_soup.select_one('.fic-header h1') or chapter_soup.select_one('h1')
@@ -763,15 +811,16 @@ def _fetch_scribblehub_toc(session, series_id):
     page = 1
 
     while page <= 200:
-        resp = session.post(ajax_url, data={
-            'action': 'wi_getreleases_pagination',
-            'pagenum': str(page),
-            'mypostid': str(series_id),
-            'mypostid2': '0',
-            'myorder': 'asc',
-        }, timeout=WEB_NOVEL_FETCH_TIMEOUT)
-        resp.raise_for_status()
+        def _post_toc_page():
+            return session.post(ajax_url, data={
+                'action': 'wi_getreleases_pagination',
+                'pagenum': str(page),
+                'mypostid': str(series_id),
+                'mypostid2': '0',
+                'myorder': 'asc',
+            }, timeout=WEB_NOVEL_FETCH_TIMEOUT)
 
+        resp = _retry_fetch(_post_toc_page)
         text = resp.text.strip()
         if not text or text in ('0', '-1'):
             break
@@ -794,8 +843,9 @@ def _fetch_scribblehub_toc(session, series_id):
 
 
 def _extract_scribblehub_chapters(session, series_url, include_author_notes, job_id):
-    response, final_url = _fetch_allowed_response(session, series_url, allowed_hosts=SCRIBBLEHUB_HOSTS)
-    response.raise_for_status()
+    response, final_url = _retry_fetch(
+        lambda: _fetch_allowed_response(session, series_url, allowed_hosts=SCRIBBLEHUB_HOSTS)
+    )
     series_soup = BeautifulSoup(response.text, 'html.parser')
 
     metadata = _extract_scribblehub_metadata(series_soup)
@@ -830,8 +880,9 @@ def _extract_scribblehub_chapters(session, series_url, include_author_notes, job
         pct = 10 + int((index / len(toc)) * 70)
         _update_job(job_id, progress=pct, message=f'Fetching chapter {index}/{len(toc)}...')
 
-        chapter_response, _ = _fetch_allowed_response(session, chapter_url, allowed_hosts=SCRIBBLEHUB_HOSTS)
-        chapter_response.raise_for_status()
+        chapter_response, _ = _retry_fetch(
+            lambda: _fetch_allowed_response(session, chapter_url, allowed_hosts=SCRIBBLEHUB_HOSTS)
+        )
         chapter_soup = BeautifulSoup(chapter_response.text, 'html.parser')
 
         title_el = chapter_soup.select_one('.chapter-title') or chapter_soup.select_one('h1')
