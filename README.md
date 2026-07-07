@@ -92,9 +92,10 @@ tools-platform/
 ├── Dockerfile                 # Nginx + entrypoint
 ├── entrypoint.sh              # Auto-discovers tools → manifest.json
 ├── nginx.conf
+├── aaris-design-language.md   # Design language reference (source of style.css)
 ├── public/
 │   ├── index.html             # Landing page (reads manifest.json)
-│   ├── style.css              # Shared design system
+│   ├── style.css              # Shared AARIS design system
 │   └── favicon.svg
 ├── converter-api/
 │   ├── Dockerfile             # Python 3.12 + Calibre + WeasyPrint + Gunicorn
@@ -164,7 +165,7 @@ The platform is hardened for public-facing deployment:
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Vanilla HTML, CSS, JS · Outfit + JetBrains Mono fonts |
+| Frontend | Vanilla HTML, CSS, JS · AARIS design system (`public/style.css`) · Archivo + IBM Plex Mono fonts |
 | Backend | Python 3.12 · Flask · Gunicorn (1 worker, 8 threads) |
 | AI | Ollama · Llama 3.1 8B (Q4_K_M) · Tesla M10 GPU |
 | Conversion | Calibre (EPUB ingest) + WeasyPrint (tagged PDF output) + Royal Road HTML export |

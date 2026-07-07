@@ -5,426 +5,144 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Date Calculator – tools.aaris.tech</title>
 
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,100..900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
 
   <style>
-    :root{
-      --bg0:#0c0c0f;
-      --bg1:#141420;
-      --bg2:#0f1118;
+    .container { max-width: 980px; animation: fadeSlideIn 380ms var(--ease-out) both; }
 
-      --text:#e8e8ed;
-      --muted: rgba(255,255,255,0.45);
-      --soft: rgba(255,255,255,0.75);
-      --faint: rgba(255,255,255,0.25);
-
-      --card: rgba(255,255,255,0.02);
-      --card2: rgba(255,255,255,0.04);
-      --border: rgba(255,255,255,0.08);
-      --border2: rgba(255,255,255,0.12);
-
-      --amber:#f59e0b;
-      --amberBg: rgba(245,158,11,0.15);
-      --amberBorder: rgba(245,158,11,0.30);
-
-      --blue:#3b82f6;
-      --blueBg: rgba(59,130,246,0.12);
-      --blueBorder: rgba(59,130,246,0.25);
-
-      --danger:#ef4444;
-      --dangerBg: rgba(239,68,68,0.12);
-      --dangerBorder: rgba(239,68,68,0.25);
+    .topRow {
+      display: flex; gap: 12px; align-items: center;
+      flex-wrap: wrap; margin-bottom: 24px;
     }
 
-    body{
-      min-height: 100vh;
-      background: linear-gradient(160deg, var(--bg0) 0%, var(--bg1) 40%, var(--bg2) 100%);
-      font-family: 'Outfit', sans-serif;
-      color: var(--text);
+    .seg {
+      display: inline-flex; gap: 6px; padding: 5px;
+      background: var(--bg-raise); border: 1px solid var(--line);
     }
-
-    .container{
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 48px 24px 80px;
-      animation: fadeSlideIn 380ms ease-out both;
-    }
-
-    h1{
-      font-size: 40px;
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      text-align: center;
-      margin-bottom: 8px;
-    }
-
-    .subtitle{
-      text-align: center;
-      font-size: 16px;
-      color: rgba(255,255,255,0.45);
-      font-weight: 300;
-      margin-bottom: 26px;
-    }
-
-    .topRow{
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-bottom: 26px;
-    }
-
-    .seg{
-      display: inline-flex;
-      gap: 6px;
-      padding: 6px;
-      border-radius: 14px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-    }
-
-    .seg button{
-      border: 1px solid transparent;
-      background: transparent;
-      color: rgba(255,255,255,0.6);
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-family: 'Outfit', sans-serif;
-      font-weight: 600;
-      font-size: 14px;
+    .seg button {
+      border: 1px solid transparent; background: transparent;
+      color: var(--muted); padding: 9px 14px;
+      font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase;
       cursor: pointer;
-      transition: 140ms ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      white-space: nowrap;
+      transition: border-color var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
+      display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+    }
+    .seg button:hover { color: var(--ink); border-color: var(--line); }
+    .seg button.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
     }
 
-    .seg button:hover{
-      background: rgba(255,255,255,0.05);
-      color: rgba(255,255,255,0.75);
-      border-color: rgba(255,255,255,0.10);
+    .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; }
+    @media (max-width: 920px) { .grid { grid-template-columns: 1fr; } }
+
+    .card { padding: 18px; background: var(--bg-raise); border: 1px solid var(--line); }
+
+    .cardHeader {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; margin-bottom: 12px;
+    }
+    .cardTitle {
+      font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+      letter-spacing: .12em; color: var(--dim); text-transform: uppercase;
     }
 
-    .seg button.active{
-      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
-      border-color: rgba(245,158,11,0.30);
-      color: var(--amber);
+    .formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 700px) { .formGrid { grid-template-columns: 1fr; } }
+
+    label { display: block; margin-bottom: 8px; }
+
+    .row { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .inline2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 520px) { .inline2 { grid-template-columns: 1fr; } }
+
+    .btnRow { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+    .btn { padding: 11px 14px; user-select: none; }
+
+    .toggles { margin-top: 14px; display: grid; gap: 10px; }
+    .toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 12px 14px;
+      border: 1px solid var(--line); background: var(--bg-input);
+    }
+    .toggle .left { display: grid; gap: 4px; }
+    .toggle .name { font-weight: 600; color: var(--ink); font-size: 14px; }
+    .toggle .hint {
+      color: var(--dim); font-size: 11px;
+      font-family: var(--font-mono); letter-spacing: .04em;
     }
 
-    .grid{
-      display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 16px;
+    /* Square rocker switch */
+    .switch {
+      position: relative; width: 44px; height: 22px;
+      border: 1px solid var(--line); background: var(--bg-raise);
+      cursor: pointer; flex: 0 0 auto;
+      transition: border-color 160ms ease, background 160ms ease;
+    }
+    .switch::after {
+      content: ""; position: absolute;
+      top: 3px; left: 3px; width: 14px; height: 14px;
+      background: var(--dim);
+      transition: left 160ms ease, background 160ms ease;
+    }
+    .switch.on { border-color: var(--accent); background: var(--accent-dim); }
+    .switch.on::after { left: 25px; background: var(--accent); }
+
+    .resultBig {
+      font-size: 28px; font-weight: 800; font-stretch: 110%;
+      letter-spacing: -0.02em; margin-bottom: 6px;
+      line-height: 1.1; word-break: break-word;
+      color: var(--accent);
+    }
+    .resultSub {
+      color: var(--muted); font-size: 12.5px;
+      font-family: var(--font-mono); letter-spacing: .02em;
+      line-height: 1.5; white-space: pre-wrap;
     }
 
-    @media (max-width: 920px){
-      .grid{ grid-template-columns: 1fr; }
+    .notice {
+      margin-top: 12px; padding: 12px 14px;
+      background: var(--bg-input); border: 1px solid var(--line);
+      color: var(--muted); font-size: 13px; line-height: 1.5;
     }
 
-    .card{
-      padding: 18px;
-      background: var(--card);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 16px;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    .warn {
+      margin-top: 12px; padding: 12px 14px;
+      background: var(--danger-dim);
+      border: 1px solid rgba(229, 72, 77, .45);
+      border-left: 3px solid var(--danger);
+      color: var(--ink); font-size: 13px; line-height: 1.5;
     }
 
-    .cardHeader{
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .cardTitle{
-      font-size: 14px;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: 0.1em;
-      color: rgba(255,255,255,0.35);
-      text-transform: uppercase;
-    }
-
-    .tag{
-      font-size: 10px;
-      font-weight: 700;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: 0.1em;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      color: rgba(255,255,255,0.5);
-      white-space: nowrap;
-    }
-
-    .formGrid{
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    @media (max-width: 700px){
-      .formGrid{ grid-template-columns: 1fr; }
-    }
-
-    label{
-      display: block;
-      font-size: 12px;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: 0.08em;
-      color: rgba(255,255,255,0.35);
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-
-    .row{
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 8px;
-    }
-
-    .inline2{
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    @media (max-width: 520px){
-      .inline2{ grid-template-columns: 1fr; }
-    }
-
-    input[type="date"],
-    input[type="time"],
-    input[type="number"],
-    select{
-      width: 100%;
-      padding: 14px 14px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.10);
-      border-radius: 12px;
-      color: var(--text);
-      font-size: 15px;
-      font-family: 'Outfit', sans-serif;
-      outline: none;
-      transition: 140ms ease;
-    }
-
-    /* Help dropdown contrast issues on some browsers */
-    select option{
-      background: #10111a;
-      color: #e8e8ed;
-    }
-
-    input:focus, select:focus{
-      border-color: rgba(245,158,11,0.35);
-      box-shadow: 0 0 0 4px rgba(245,158,11,0.08);
-    }
-
-    .btnRow{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 14px;
-    }
-
-    .btn{
-      border-radius: 14px;
-      cursor: pointer;
-      border: 1px solid rgba(255,255,255,0.10);
-      background: rgba(255,255,255,0.04);
-      color: rgba(255,255,255,0.7);
-      padding: 12px 14px;
-      font-family: 'Outfit', sans-serif;
-      font-weight: 600;
-      font-size: 14px;
-      transition: 140ms ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      user-select: none;
-    }
-    .btn:hover{
-      border-color: rgba(255,255,255,0.16);
-      background: rgba(255,255,255,0.06);
-      color: rgba(255,255,255,0.82);
-      transform: translateY(-1px);
-    }
-
-    .btnPrimary{
-      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
-      border: 1px solid rgba(245,158,11,0.30);
-      color: var(--amber);
-    }
-    .btnPrimary:hover{
-      border-color: rgba(245,158,11,0.42);
-      background: linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.06));
-    }
-
-    .btnBlue{
-      background: linear-gradient(135deg, rgba(59,130,246,0.14), rgba(59,130,246,0.05));
-      border: 1px solid rgba(59,130,246,0.25);
-      color: var(--blue);
-    }
-
-    .btnDanger{
-      background: linear-gradient(135deg, rgba(239,68,68,0.14), rgba(239,68,68,0.05));
-      border: 1px solid rgba(239,68,68,0.25);
-      color: var(--danger);
-    }
-
-    .toggles{
-      margin-top: 14px;
-      display: grid;
-      gap: 10px;
-    }
-
-    .toggle{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 12px 14px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.06);
-      background: rgba(255,255,255,0.02);
-    }
-
-    .toggle .left{
-      display: grid;
-      gap: 4px;
-    }
-
-    .toggle .name{
-      font-weight: 600;
-      color: rgba(255,255,255,0.78);
-      font-size: 14px;
-    }
-    .toggle .hint{
-      color: rgba(255,255,255,0.40);
-      font-size: 12px;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: 0.04em;
-    }
-
-    .switch{
-      position: relative;
-      width: 48px;
-      height: 28px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(255,255,255,0.05);
-      cursor: pointer;
-      flex: 0 0 auto;
-      transition: 160ms ease;
-    }
-    .switch::after{
-      content:"";
-      position:absolute;
-      top: 3px;
-      left: 3px;
-      width: 22px;
-      height: 22px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.65);
-      transition: 160ms ease;
-    }
-    .switch.on{
-      background: rgba(245,158,11,0.12);
-      border-color: rgba(245,158,11,0.35);
-    }
-    .switch.on::after{
-      left: 23px;
-      background: rgba(245,158,11,0.95);
-    }
-
-    .resultBig{
-      font-size: 28px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      margin-bottom: 6px;
-      line-height: 1.1;
-      word-break: break-word;
-    }
-
-    .resultSub{
-      color: rgba(255,255,255,0.5);
-      font-size: 13px;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: 0.04em;
-      line-height: 1.45;
-      white-space: pre-wrap;
-    }
-
-    .mono{
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    .notice{
-      margin-top: 12px;
-      padding: 12px 14px;
-      border-radius: 12px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.06);
-      color: rgba(255,255,255,0.55);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .warn{
-      margin-top: 12px;
-      padding: 12px 14px;
-      border-radius: 12px;
-      background: rgba(239,68,68,0.10);
-      border: 1px solid rgba(239,68,68,0.22);
-      color: rgba(255,255,255,0.85);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .toast{
-      position: fixed;
-      left: 50%;
-      transform: translateX(-50%);
-      bottom: 20px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.10);
-      background: rgba(0,0,0,0.55);
-      color: rgba(255,255,255,0.85);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
-      letter-spacing: 0.06em;
-      opacity: 0;
-      pointer-events: none;
+    .toast {
+      opacity: 0; pointer-events: none;
       transition: 220ms ease;
     }
-    .toast.show{
+    .toast.show {
       opacity: 1;
       transform: translateX(-50%) translateY(-4px);
-    }
-
-    .hidden{ display:none !important; }
-
-    @keyframes fadeSlideIn{
-      from { opacity: 0; transform: translateY(12px); }
-      to { opacity: 1; transform: translateY(0); }
     }
   </style>
 </head>
 
 <body>
-  <div class="container">
-    <a href="/" class="back">← tools.aaris.tech</a>
+  <nav class="topbar">
+    <a href="/" class="topbar-brand">TOOLS.AARIS.TECH</a>
+    <span class="topbar-path">/ TOOLS / DATE-CALCULATOR</span>
+    <span class="topbar-right"><span class="led led-ok" aria-hidden="true"></span>OPERATIONAL</span>
+  </nav>
 
-    <h1>Date Calculator</h1>
-    <p class="subtitle">Add/subtract time from a date, or calculate the difference between two dates (perfect for “days since…”).</p>
+  <div class="container">
+    <header class="tool-head">
+      <div class="tool-kicker">01 / UTILITY</div>
+      <h1>Date Calculator</h1>
+      <p class="subtitle">Add/subtract time from a date, or calculate the difference between two dates (perfect for “days since…”).</p>
+      <div class="rule"></div>
+    </header>
 
     <div class="topRow">
       <div class="seg" role="tablist" aria-label="Mode switch">

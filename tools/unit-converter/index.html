@@ -4,116 +4,80 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Unit Converter – tools.aaris.tech</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,100..900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <style>
-    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
-    header { text-align: center; margin-bottom: 36px; }
-    .icon { font-size: 32px; margin-bottom: 12px; }
-    h1 {
-      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 8px;
-    }
-    .subtitle { font-size: 16px; color: rgba(255,255,255,0.45); font-weight: 300; }
+    .container { max-width: 760px; }
 
     /* Category tabs */
-    .tabs {
-      display: flex; flex-wrap: wrap; gap: 6px;
-      margin-bottom: 28px; justify-content: center;
-    }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
     .tab {
-      padding: 8px 16px; border-radius: 10px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      color: rgba(255,255,255,0.45); font-size: 13px; font-weight: 500;
-      font-family: 'Outfit', sans-serif; cursor: pointer;
-      transition: all 0.2s; white-space: nowrap;
+      padding: 8px 14px;
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .08em; text-transform: uppercase;
+      cursor: pointer; white-space: nowrap;
+      transition: border-color var(--dur-fast), color var(--dur-fast);
     }
-    .tab:hover { border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); }
+    .tab:hover { border-color: var(--accent); color: var(--ink); }
     .tab.active {
-      background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3);
-      color: #f59e0b; font-weight: 600;
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
     }
-    .tab-icon { margin-right: 5px; }
+    .tab-icon { margin-right: 5px; filter: grayscale(1); }
+    .tab.active .tab-icon { filter: none; }
 
     /* Converter area */
     .converter {
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 16px; padding: 28px;
+      background: var(--bg-raise);
+      border: 1px solid var(--line);
+      padding: 24px;
       margin-bottom: 20px;
+      animation: fadeIn 0.3s var(--ease-out);
     }
     .row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
     .field { flex: 1; display: flex; flex-direction: column; gap: 6px; }
-    .label {
-      font-size: 11px; font-family: 'JetBrains Mono', monospace;
-      color: rgba(255,255,255,0.25); letter-spacing: 0.08em; text-transform: uppercase;
-    }
-    input[type="number"] {
-      padding: 14px 16px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 12px; color: #e8e8ed; font-size: 18px;
-      font-family: 'JetBrains Mono', monospace;
-      outline: none; width: 100%;
-      -moz-appearance: textfield;
-    }
+
+    input[type="number"] { font-size: 17px; }
 
     /* Main result display (not an input) */
     .output-box {
-      padding: 14px 16px;
-      background: rgba(245,158,11,0.04) !important;
-      border: 1px solid rgba(245,158,11,0.15) !important;
-      border-radius: 12px;
-      color: #f59e0b !important;
-      font-size: 18px;
-      font-family: 'JetBrains Mono', monospace;
+      padding: 12px 14px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent);
+      color: var(--accent-hover);
+      font-size: 17px;
+      font-family: var(--font-mono);
       width: 100%;
-      min-height: 52px;
+      min-height: 49px;
       display: flex;
       align-items: center;
       user-select: text;
       cursor: pointer;
     }
-    .output-box:focus {
-      outline: none;
-      border-color: rgba(245,158,11,0.3) !important;
-    }
-    input[type="number"]::-webkit-inner-spin-button,
-    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
-    input[type="number"]:focus { border-color: rgba(255,255,255,0.15); }
-    select {
-      padding: 14px 14px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 12px; color: #e8e8ed; font-size: 14px;
-      font-family: 'Outfit', sans-serif; outline: none; cursor: pointer;
-      width: 100%; appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right 14px center;
-    }
 
     /* Swap button */
     .swap-btn {
-      width: 44px; height: 44px; border-radius: 50%;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      color: rgba(255,255,255,0.3); font-size: 18px;
-      cursor: pointer; transition: all 0.2s;
+      width: 44px; height: 44px;
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--muted); font-size: 16px;
+      cursor: pointer;
+      transition: border-color var(--dur-fast), color var(--dur-fast), transform var(--dur-med) var(--ease-out);
       display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0; margin-bottom: 1px;
+      flex-shrink: 0; margin-bottom: 3px;
     }
-    .swap-btn:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.6);
-      transform: rotate(180deg); }
+    .swap-btn:hover { border-color: var(--accent); color: var(--ink); transform: rotate(180deg); }
 
     /* All conversions grid */
     .results-label {
-      font-size: 11px; font-family: 'JetBrains Mono', monospace;
-      color: rgba(255,255,255,0.2); letter-spacing: 0.08em;
-      text-transform: uppercase; margin-bottom: 12px;
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--dim); margin-bottom: 12px;
     }
     .results-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -121,58 +85,30 @@
     }
     .result-card {
       padding: 12px 14px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.04);
-      border-radius: 10px;
-      cursor: pointer; transition: all 0.2s;
+      background: var(--bg-input);
+      border: 1px solid var(--line-soft);
+      cursor: pointer;
+      transition: border-color var(--dur-fast), background var(--dur-fast);
       display: flex; flex-direction: column; gap: 2px;
     }
-    .result-card:hover {
-      border-color: rgba(255,255,255,0.1);
-      background: rgba(255,255,255,0.04);
-    }
-    .result-card.active-unit {
-      border-color: rgba(245,158,11,0.25);
-      background: rgba(245,158,11,0.04);
-    }
+    .result-card:hover { border-color: var(--accent); }
+    .result-card.active-unit { border-color: var(--accent); background: var(--accent-dim); }
     .result-value {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 15px; font-weight: 600; color: #e8e8ed;
+      font-family: var(--font-mono);
+      font-size: 15px; font-weight: 600; color: var(--ink);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .result-unit {
-      font-size: 12px; color: rgba(255,255,255,0.3);
-    }
-    .result-abbr {
-      font-family: 'JetBrains Mono', monospace;
-      color: rgba(255,255,255,0.15); font-size: 11px;
-    }
+    .result-unit { font-size: 12px; color: var(--muted); }
+    .result-abbr { font-family: var(--font-mono); font-size: 10px; color: var(--dim); }
 
-    .copied-toast {
-      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-      padding: 10px 20px; background: rgba(34,197,94,0.15);
-      border: 1px solid rgba(34,197,94,0.3); border-radius: 10px;
-      color: #4ade80; font-size: 13px; font-family: 'JetBrains Mono', monospace;
-      animation: toastIn 0.3s ease, toastOut 0.3s ease 1.5s forwards;
-      z-index: 100;
-    }
+    .copied-toast { animation: toastIn 0.3s ease, toastOut 0.3s ease 1.5s forwards; }
     @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
     @keyframes toastOut { from { opacity:1; } to { opacity:0; } }
 
-    .note {
-      font-size: 12px; color: rgba(255,255,255,0.15);
-      font-family: 'JetBrains Mono', monospace;
-      text-align: center; margin-top: 20px;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .converter { animation: fadeIn 0.3s ease; }
+    .note { text-align: center; margin-top: 20px; }
 
     @media (max-width: 500px) {
-      .row { flex-direction: column; }
+      .row { flex-direction: column; align-items: stretch; }
       .swap-btn { align-self: center; transform: rotate(90deg); }
       .swap-btn:hover { transform: rotate(270deg); }
       .results-grid { grid-template-columns: 1fr 1fr; }
@@ -180,12 +116,18 @@
   </style>
 </head>
 <body>
+  <nav class="topbar">
+    <a href="/" class="topbar-brand">TOOLS.AARIS.TECH</a>
+    <span class="topbar-path">/ TOOLS / UNIT-CONVERTER</span>
+    <span class="topbar-right"><span class="led led-ok" aria-hidden="true"></span>OPERATIONAL</span>
+  </nav>
+
   <div class="container">
-    <a href="/" class="back">← tools.aaris.tech</a>
-    <header>
-      <div class="icon">🔄</div>
+    <header class="tool-head">
+      <div class="tool-kicker">01 / UTILITY</div>
       <h1>Unit Converter</h1>
-      <p class="subtitle">Built for IT — time, data, bandwidth, power and more</p>
+      <p class="subtitle">Built for IT — time, data, bandwidth, power and more. All conversions are instant and offline.</p>
+      <div class="rule"></div>
     </header>
 
     <div class="tabs" id="tabs"></div>

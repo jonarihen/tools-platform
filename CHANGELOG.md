@@ -6,6 +6,16 @@ All notable changes to tools.aaris.tech are documented here.
 
 ## [Unreleased]
 
+### AARIS design language rollout (UX upgrade)
+- **Shared design system** — `public/style.css` is now a full AARIS design system (dark operator-console style: near-black background with a subtle technical grid, thin `#232830` borders, square corners, orange `#ff5a1f` accent, Archivo + IBM Plex Mono). All pages link it before their page-specific styles
+- **Landing page redesign** — fixed status bar with live clock and OPERATIONAL LED, numbered section header, tool cards as bordered grid cells with index numbers, grayscale-to-color icons, and mono tags
+- **All 10 tool pages restyled** — every tool now shares the same fixed topbar (brand link back home + tool path + status LED), standard header block (orange kicker, heavy uppercase title, subtitle, rule), orange-filled primary buttons, mono uppercase labels, and token-based colors; per-tool inline CSS reduced to layout-only rules
+- **Ocistrator charts** — Chart.js palette replaced with a fixed-order categorical palette validated for CVD separation and ≥3:1 contrast on the dark surface; series beyond 8 fall back to neutral gray instead of cycling hues; the per-tool bar chart is now single-hue (identity lives on the axis)
+- **Favicon** — squared off and recolored to the AARIS orange/near-black palette
+- **add-tool-guide rewritten** — the AI-facing guide now teaches the AARIS tokens, shared component classes, and the topbar/header template instead of the old gradient style
+- **EPUB dropzone hint fix** — removed the stale "max 100 MB" claim (the server accepts far larger files)
+- **Reduced motion** — all animation and transitions are disabled under `prefers-reduced-motion` via the shared stylesheet
+
 ### Ticket Ranker improvements
 - **Keyboard ranking** — the ranking screen now supports `←` and `→` so you can pick the left or right ticket without leaving the keyboard
 - **Fast mode for large lists** — for 16+ tickets, the tool can now pre-rank tickets in groups of 4 before ordering those groups, cutting the number of decisions for long queues

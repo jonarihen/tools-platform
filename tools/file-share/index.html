@@ -4,208 +4,132 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>File Share – tools.aaris.tech</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,100..900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <style>
-    .container { max-width: 640px; margin: 0 auto; padding: 48px 24px 80px; }
-    header { text-align: center; margin-bottom: 40px; }
-    .icon { font-size: 36px; margin-bottom: 12px; }
-    h1 {
-      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 8px;
-    }
-    .subtitle { font-size: 16px; color: rgba(255,255,255,0.45); font-weight: 300; }
+    .container { max-width: 640px; }
 
     /* Drop zone */
-    .drop-zone {
-      border: 2px dashed rgba(255,255,255,0.12);
-      border-radius: 18px; padding: 56px 24px; text-align: center;
-      cursor: pointer; transition: all 0.25s ease;
-      background: rgba(255,255,255,0.02); position: relative;
-    }
-    .drop-zone.drag-over {
-      border-color: rgba(99,102,241,0.6); background: rgba(99,102,241,0.06);
-    }
     .drop-zone.disabled { pointer-events: none; opacity: 0.5; }
-    .drop-zone input[type="file"] {
-      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    .drop-icon { font-size: 32px; margin-bottom: 12px; filter: grayscale(1); opacity: .8; }
+    .drop-label { font-size: 15px; color: var(--muted); margin-bottom: 6px; }
+    .drop-hint {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .06em; text-transform: uppercase; color: var(--dim);
     }
-    .drop-icon { font-size: 38px; margin-bottom: 14px; }
-    .drop-label { font-size: 17px; font-weight: 500; color: rgba(255,255,255,0.7); margin-bottom: 6px; }
-    .drop-hint  { font-size: 13px; color: rgba(255,255,255,0.25); }
 
     /* Customize section */
     .customize-toggle {
       display: flex; align-items: center; gap: 8px; margin-top: 16px;
-      padding: 10px 0; cursor: pointer; color: rgba(255,255,255,0.35);
-      font-size: 13px; font-family: 'JetBrains Mono', monospace;
+      padding: 10px 0; cursor: pointer; color: var(--muted);
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .1em; text-transform: uppercase;
       background: none; border: none; width: 100%; text-align: left;
-      transition: color 0.2s;
+      transition: color var(--dur-fast);
     }
-    .customize-toggle:hover { color: rgba(255,255,255,0.6); }
-    .customize-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+    .customize-toggle:hover { color: var(--ink); }
+    .customize-toggle .arrow { transition: transform var(--dur-fast); display: inline-block; }
     .customize-toggle.open .arrow { transform: rotate(90deg); }
 
     .customize-panel {
-      display: none; padding: 20px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 14px; margin-bottom: 4px;
-      animation: fadeIn 0.2s ease;
+      display: none; padding: 18px;
+      background: var(--bg-raise); border: 1px solid var(--line);
+      margin-bottom: 4px;
+      animation: fadeIn 0.2s var(--ease-out);
     }
     .customize-panel.open { display: block; }
 
     .field { margin-bottom: 18px; }
     .field:last-child { margin-bottom: 0; }
-    .field label {
-      display: block; font-size: 12px; font-family: 'JetBrains Mono', monospace;
-      color: rgba(255,255,255,0.3); letter-spacing: 0.06em; text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-    .slug-row { display: flex; align-items: center; gap: 0; }
+    .field label { display: block; margin-bottom: 8px; }
+
+    .slug-row { display: flex; align-items: stretch; }
     .slug-prefix {
-      padding: 11px 12px; background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.07); border-right: none;
-      border-radius: 10px 0 0 10px;
-      font-size: 12px; font-family: 'JetBrains Mono', monospace;
-      color: rgba(255,255,255,0.2); white-space: nowrap;
+      display: flex; align-items: center;
+      padding: 0 12px; background: var(--bg-raise);
+      border: 1px solid var(--line); border-right: none;
+      font-family: var(--font-mono); font-size: 12px;
+      color: var(--dim); white-space: nowrap;
     }
-    input[type="text"], input[type="password"], select {
-      width: 100%; padding: 11px 14px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 10px; color: #e8e8ed;
-      font-size: 14px; font-family: 'Outfit', sans-serif;
-      outline: none; transition: border-color 0.2s; box-sizing: border-box;
-    }
-    .slug-row input[type="text"] { border-radius: 0 10px 10px 0; flex: 1; }
-    input[type="text"]:focus, input[type="password"]:focus, select:focus {
-      border-color: rgba(99,102,241,0.45);
-    }
-    input::placeholder { color: rgba(255,255,255,0.15); }
-    select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='rgba(255,255,255,0.3)' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
-    select option { background: #1a1a2e; }
+    .slug-row input[type="text"] { flex: 1; font-family: var(--font-mono); }
+    #slugStatus { font-family: var(--font-mono); font-size: 11px; margin-top: 6px; color: var(--dim); }
 
     /* Progress */
     .progress-wrap {
-      margin-top: 20px; background: rgba(255,255,255,0.04);
-      border-radius: 8px; overflow: hidden; height: 5px; display: none;
+      margin-top: 20px; background: var(--line-soft);
+      overflow: hidden; height: 4px; display: none;
     }
-    .progress-bar {
-      height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8);
-      width: 0%; transition: width 0.3s ease; border-radius: 8px;
-    }
+    .progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s ease; }
 
-    /* Status */
-    .status {
-      margin-top: 14px; padding: 12px 16px; border-radius: 10px;
-      font-size: 13px; font-family: 'JetBrains Mono', monospace;
-      animation: fadeIn 0.3s ease;
-    }
-    .status.error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #f87171; }
-    .status.info  { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); color: #60a5fa; }
-    .status.ok    { background: rgba(34,197,94,0.08);  border: 1px solid rgba(34,197,94,0.2);  color: #4ade80; }
+    .status { margin-top: 14px; }
 
     /* Result card */
     .result-card {
-      margin-top: 24px; padding: 24px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 16px; display: none; animation: fadeIn 0.35s ease;
+      margin-top: 24px; padding: 20px;
+      background: var(--bg-raise); border: 1px solid var(--line);
+      display: none; animation: fadeIn 0.35s var(--ease-out);
     }
-    .result-filename { font-size: 16px; font-weight: 600; color: #e8e8ed; margin-bottom: 4px; word-break: break-all; }
-    .result-meta { font-size: 13px; font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.3); margin-bottom: 18px; }
+    .result-filename { font-size: 15px; font-weight: 700; margin-bottom: 4px; word-break: break-all; }
+    .result-meta { font-family: var(--font-mono); font-size: 11px; color: var(--dim); margin-bottom: 16px; }
 
     .link-row { display: flex; gap: 8px; align-items: stretch; }
     .link-box {
       flex: 1; padding: 11px 14px;
-      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 10px; font-size: 13px; font-family: 'JetBrains Mono', monospace;
-      color: #a5b4fc; word-break: break-all; user-select: all;
+      background: var(--bg-input); border: 1px solid var(--line);
+      font-family: var(--font-mono); font-size: 12.5px;
+      color: var(--accent-hover); word-break: break-all; user-select: all;
     }
-    .btn-copy {
-      padding: 0 18px; background: rgba(99,102,241,0.15);
-      border: 1px solid rgba(99,102,241,0.3); border-radius: 10px;
-      color: #818cf8; font-size: 14px; font-weight: 600;
-      font-family: 'Outfit', sans-serif; cursor: pointer; white-space: nowrap;
-      transition: all 0.2s; flex-shrink: 0;
-    }
-    .btn-copy:hover { background: rgba(99,102,241,0.25); }
-    .btn-copy.copied { color: #4ade80; border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.08); }
+    .btn-copy { padding: 0 18px; flex-shrink: 0; }
+    .btn-copy.copied { background: var(--ok); border-color: var(--ok); }
 
     .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-    .badge {
-      display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px;
-      border-radius: 8px; font-size: 12px; font-family: 'JetBrains Mono', monospace;
-    }
-    .badge-yellow { background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.2); color: #fbbf24; }
-    .badge-purple { background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); color: #a5b4fc; }
+    .badge { padding: 6px 12px; }
 
-    .btn-new {
-      display: block; width: 100%; margin-top: 18px; padding: 13px;
-      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 12px; color: rgba(255,255,255,0.4);
-      font-size: 14px; font-weight: 500; font-family: 'Outfit', sans-serif;
-      cursor: pointer; transition: all 0.2s; text-align: center;
-    }
-    .btn-new:hover { border-color: rgba(255,255,255,0.14); color: rgba(255,255,255,0.65); }
+    .btn-new { display: flex; width: 100%; margin-top: 18px; }
 
     /* ── Download view ───────────────────────────────────────────────────── */
     .dl-card {
-      padding: 36px 28px; background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 18px; text-align: center; animation: fadeIn 0.35s ease;
+      padding: 36px 28px;
+      background: var(--bg-raise); border: 1px solid var(--line);
+      text-align: center; animation: fadeIn 0.35s var(--ease-out);
     }
-    .dl-file-icon { font-size: 48px; margin-bottom: 16px; }
-    .dl-filename  { font-size: 20px; font-weight: 600; color: #e8e8ed; margin-bottom: 8px; word-break: break-all; }
-    .dl-meta      { font-size: 14px; font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.3); margin-bottom: 8px; }
+    .dl-file-icon { font-size: 40px; margin-bottom: 16px; filter: grayscale(1); opacity: .8; }
+    .dl-filename  { font-size: 19px; font-weight: 700; margin-bottom: 8px; word-break: break-all; }
+    .dl-meta      { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-bottom: 10px; }
     .dl-expiry    {
       display: inline-flex; align-items: center; gap: 6px; margin-bottom: 28px;
-      padding: 7px 14px; background: rgba(234,179,8,0.08);
-      border: 1px solid rgba(234,179,8,0.2); border-radius: 8px;
-      font-size: 12px; font-family: 'JetBrains Mono', monospace; color: #fbbf24;
+      padding: 6px 12px;
+      background: var(--warning-dim); border: 1px solid rgba(255, 178, 36, .4);
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .06em; color: var(--warning);
     }
 
     /* Password gate */
     .pw-gate { margin-bottom: 24px; }
     .pw-gate .pw-row { display: flex; gap: 8px; max-width: 360px; margin: 0 auto; }
     .pw-gate input { flex: 1; }
-    .btn-unlock {
-      padding: 11px 20px; background: rgba(99,102,241,0.15);
-      border: 1px solid rgba(99,102,241,0.3); border-radius: 10px;
-      color: #818cf8; font-size: 14px; font-weight: 600;
-      font-family: 'Outfit', sans-serif; cursor: pointer;
-      transition: all 0.2s; white-space: nowrap;
+    #pwError {
+      margin-top: 10px; min-height: 18px;
+      font-family: var(--font-mono); font-size: 11px; color: var(--danger);
     }
-    .btn-unlock:hover { background: rgba(99,102,241,0.25); }
 
-    .btn-download {
-      display: inline-block; padding: 15px 44px;
-      background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(99,102,241,0.08));
-      border: 1px solid rgba(99,102,241,0.35); border-radius: 14px;
-      color: #818cf8; font-size: 16px; font-weight: 600;
-      font-family: 'Outfit', sans-serif; cursor: pointer;
-      transition: all 0.2s; text-decoration: none;
-    }
-    .btn-download:hover { background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(99,102,241,0.14)); }
-    .btn-download:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(7px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
+    .btn-download { padding: 15px 44px; }
   </style>
 </head>
 <body>
+  <nav class="topbar">
+    <a href="/" class="topbar-brand">TOOLS.AARIS.TECH</a>
+    <span class="topbar-path">/ TOOLS / FILE-SHARE</span>
+    <span class="topbar-right"><span class="led led-ok" aria-hidden="true"></span>OPERATIONAL</span>
+  </nav>
+
   <div class="container">
-    <a href="/" class="back">← tools.aaris.tech</a>
-    <header>
-      <div class="icon">📤</div>
+    <header class="tool-head">
+      <div class="tool-kicker">01 / SHARE</div>
       <h1>File Share</h1>
-      <p class="subtitle">Upload a file, share the link — auto-deleted on expiry</p>
+      <p class="subtitle">Upload a file, share the link — the file is auto-deleted when it expires.</p>
+      <div class="rule"></div>
     </header>
 
     <!-- ── Upload view ─────────────────────────────────────────────────── -->
@@ -229,7 +153,7 @@
             <input type="text" id="slugInput" placeholder="my-file" maxlength="50"
                    oninput="validateSlug()" autocomplete="off" spellcheck="false">
           </div>
-          <div id="slugStatus" style="font-size:12px;font-family:'JetBrains Mono',monospace;margin-top:6px;color:rgba(255,255,255,0.25);">
+          <div id="slugStatus">
             Letters, numbers and hyphens · 3–50 chars · no leading/trailing hyphens
           </div>
         </div>
@@ -287,7 +211,7 @@
                    onkeydown="if(event.key==='Enter') unlockDownload()">
             <button class="btn-unlock" onclick="unlockDownload()">Unlock</button>
           </div>
-          <div id="pwError" style="margin-top:10px;font-size:12px;font-family:'JetBrains Mono',monospace;color:#f87171;min-height:18px;"></div>
+          <div id="pwError"></div>
         </div>
 
         <button class="btn-download" id="dlBtn" onclick="triggerDownload()" style="display:none">
@@ -458,7 +382,7 @@
 
       if (!val) {
         _slugValid = true;
-        el.style.color = 'rgba(255,255,255,0.25)';
+        el.style.color = 'var(--dim)';
         el.textContent = 'Letters, numbers and hyphens · 3–50 chars · no leading/trailing hyphens';
         return;
       }
@@ -467,7 +391,7 @@
       const formatOk = /^[a-zA-Z0-9][a-zA-Z0-9\-]{1,48}[a-zA-Z0-9]$/.test(val);
       if (!formatOk) {
         _slugValid = false;
-        el.style.color = '#f87171';
+        el.style.color = 'var(--danger)';
         el.textContent = val.length < 3
           ? 'Too short — minimum 3 characters'
           : val.length > 50
@@ -479,7 +403,7 @@
       }
 
       // Debounce the availability check
-      el.style.color = 'rgba(255,255,255,0.25)';
+      el.style.color = 'var(--dim)';
       el.textContent = 'Checking availability...';
       _slugValid = false;
 
@@ -491,16 +415,16 @@
           if (document.getElementById('slugInput').value.trim().toLowerCase() !== val) return;
           if (data.available) {
             _slugValid = true;
-            el.style.color = '#4ade80';
+            el.style.color = 'var(--ok)';
             el.textContent = '✓ Available';
           } else {
             _slugValid = false;
-            el.style.color = '#f87171';
+            el.style.color = 'var(--danger)';
             el.textContent = '✗ Already taken — choose another';
           }
         } catch {
           _slugValid = false;
-          el.style.color = '#f87171';
+          el.style.color = 'var(--danger)';
           el.textContent = 'Could not check availability';
         }
       }, 400);

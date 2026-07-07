@@ -4,154 +4,106 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EPUB to PDF – tools.aaris.tech</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,100..900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    .container { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
-    header { text-align: center; margin-bottom: 40px; }
-    .icon { font-size: 32px; margin-bottom: 12px; }
-    h1 {
-      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 8px;
-    }
-    .subtitle { font-size: 16px; color: rgba(255,255,255,0.45); font-weight: 300; }
-    .badge {
-      display: inline-block; margin-top: 8px;
-      font-size: 10px; font-family: 'JetBrains Mono', monospace;
-      color: rgba(59,130,246,0.8); letter-spacing: 0.08em;
-      padding: 4px 10px; background: rgba(59,130,246,0.08);
-      border: 1px solid rgba(59,130,246,0.2); border-radius: 6px;
-    }
+    .container { max-width: 720px; }
 
-    .dropzone {
-      border: 2px dashed rgba(255,255,255,0.08);
-      border-radius: 16px; padding: 60px 24px;
-      text-align: center; cursor: pointer;
-      transition: all 0.25s; margin-bottom: 24px;
-      position: relative;
+    .badge-row { margin-top: 14px; }
+
+    .dropzone { margin-bottom: 24px; }
+    .dropzone-icon { font-size: 30px; margin-bottom: 12px; display: block; filter: grayscale(1); opacity: .8; }
+    .dropzone-text { font-size: 15px; color: var(--muted); }
+    .dropzone-hint {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--dim); margin-top: 8px;
     }
-    .dropzone:hover, .dropzone.dragover {
-      border-color: rgba(245,158,11,0.4);
-      background: rgba(245,158,11,0.03);
-    }
-    .dropzone-icon { font-size: 40px; margin-bottom: 16px; display: block; }
-    .dropzone-text { font-size: 16px; color: rgba(255,255,255,0.5); }
-    .dropzone-hint { font-size: 13px; color: rgba(255,255,255,0.2); margin-top: 8px;
-      font-family: 'JetBrains Mono', monospace; }
-    .dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
     .file-info {
       display: flex; align-items: center; gap: 14px;
-      padding: 16px 20px; background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 12px; margin-bottom: 20px;
-      animation: fadeIn 0.3s ease;
+      padding: 14px 16px;
+      background: var(--bg-raise); border: 1px solid var(--line);
+      margin-bottom: 20px;
+      animation: fadeIn 0.3s var(--ease-out);
     }
-    .file-icon { font-size: 24px; flex-shrink: 0; }
+    .file-icon { font-size: 20px; flex-shrink: 0; filter: grayscale(1); }
     .file-details { flex: 1; min-width: 0; }
-    .file-name { font-size: 15px; font-weight: 500; white-space: nowrap;
-      overflow: hidden; text-overflow: ellipsis; }
-    .file-size { font-size: 13px; color: rgba(255,255,255,0.35);
-      font-family: 'JetBrains Mono', monospace; }
+    .file-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-size { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
     .file-remove {
-      background: none; border: none; color: rgba(255,255,255,0.2);
-      font-size: 20px; cursor: pointer; padding: 4px 8px;
-      font-family: 'Outfit', sans-serif;
+      background: none; border: none; color: var(--dim);
+      font-size: 20px; line-height: 1; cursor: pointer; padding: 4px 8px;
     }
-    .file-remove:hover { color: rgba(255,255,255,0.5); }
+    .file-remove:hover { color: var(--danger); }
 
     .book-meta {
       display: flex; gap: 16px; align-items: flex-start;
-      padding: 18px 20px; background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 12px; margin-bottom: 20px;
-      animation: fadeIn 0.3s ease;
+      padding: 16px 18px;
+      background: var(--bg-raise); border: 1px solid var(--line);
+      margin-bottom: 20px;
+      animation: fadeIn 0.3s var(--ease-out);
     }
     .book-cover {
-      width: 80px; height: 110px; border-radius: 6px;
-      object-fit: cover; flex-shrink: 0;
-      background: rgba(255,255,255,0.04);
+      width: 80px; height: 110px; object-fit: cover; flex-shrink: 0;
+      background: var(--line-soft); border: 1px solid var(--line);
     }
     .book-info { flex: 1; }
-    .book-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-    .book-author { font-size: 14px; color: rgba(255,255,255,0.5); margin-bottom: 8px; }
-    .book-chapters { font-size: 12px; font-family: 'JetBrains Mono', monospace;
-      color: rgba(255,255,255,0.25); }
+    .book-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .book-author { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    .book-chapters {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .06em; text-transform: uppercase; color: var(--dim);
+    }
 
     .settings { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
     .setting-group { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 6px; }
-    .setting-label {
-      font-size: 11px; font-family: 'JetBrains Mono', monospace;
-      color: rgba(255,255,255,0.25); letter-spacing: 0.08em; text-transform: uppercase;
-    }
-    select {
-      padding: 12px 14px; background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
-      color: #e8e8ed; font-size: 14px; font-family: 'Outfit', sans-serif;
-      outline: none; cursor: pointer; width: 100%; appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right 12px center;
-    }
 
-    .btn-convert {
-      width: 100%; padding: 16px 32px;
-      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
-      border: 1px solid rgba(245,158,11,0.3); border-radius: 14px;
-      color: #f59e0b; font-size: 16px; font-weight: 600;
-      font-family: 'Outfit', sans-serif; cursor: pointer;
-      transition: all 0.2s; margin-bottom: 16px;
-    }
-    .btn-convert:hover { background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(245,158,11,0.1)); }
-    .btn-convert:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-convert { width: 100%; padding: 16px; margin-bottom: 16px; }
 
-    .progress-wrap { margin-bottom: 20px; animation: fadeIn 0.3s ease; }
-    .progress-bar { height: 4px; background: rgba(255,255,255,0.06);
-      border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
-    .progress-fill { height: 100%; border-radius: 2px;
-      background: linear-gradient(90deg, #f59e0b, #3b82f6);
-      transition: width 0.3s ease; width: 0%; }
-    .progress-text { font-size: 13px; color: rgba(255,255,255,0.3);
-      font-family: 'JetBrains Mono', monospace; text-align: center; }
+    .progress-wrap { margin-bottom: 20px; animation: fadeIn 0.3s var(--ease-out); }
+    .progress-bar { height: 4px; background: var(--line-soft); overflow: hidden; margin-bottom: 8px; }
+    .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s ease; width: 0%; }
+    .progress-text {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--muted); text-align: center;
+    }
     .progress-fill.indeterminate {
       width: 30% !important;
       animation: indeterminate 1.5s ease-in-out infinite;
-    }
-
-    .status { padding: 14px 18px; border-radius: 12px; font-size: 14px;
-      margin-bottom: 16px; animation: fadeIn 0.3s ease; }
-    .status.ok { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); color: #4ade80; }
-    .status.error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #f87171; }
-
-    .hidden { display: none; }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
     }
     @keyframes indeterminate {
       0% { margin-left: 0; }
       50% { margin-left: 70%; }
       100% { margin-left: 0; }
     }
+
+    .status { margin-bottom: 16px; }
   </style>
 </head>
 <body>
+  <nav class="topbar">
+    <a href="/" class="topbar-brand">TOOLS.AARIS.TECH</a>
+    <span class="topbar-path">/ TOOLS / EPUB-TO-PDF</span>
+    <span class="topbar-right"><span class="led led-ok" aria-hidden="true"></span>OPERATIONAL</span>
+  </nav>
+
   <div class="container">
-    <a href="/" class="back">← tools.aaris.tech</a>
-    <header>
-      <div class="icon">📖</div>
+    <header class="tool-head">
+      <div class="tool-kicker">01 / CONVERTER</div>
       <h1>EPUB to PDF</h1>
-      <p class="subtitle">Tagged PDF conversion with EPUB reading order preserved for TTS</p>
-      <span class="badge">SERVER-SIDE · ACCESSIBLE PDF · TTS-FRIENDLY</span>
+      <p class="subtitle">Tagged PDF conversion with the EPUB reading order preserved for TTS and screen readers.</p>
+      <div class="badge-row"><span class="badge">SERVER-SIDE · ACCESSIBLE PDF · TTS-FRIENDLY</span></div>
+      <div class="rule"></div>
     </header>
 
     <div class="dropzone" id="dropzone">
       <span class="dropzone-icon">📂</span>
       <div class="dropzone-text">Drop your EPUB file here or click to browse</div>
-      <div class="dropzone-hint">.epub files · max 100 MB</div>
+      <div class="dropzone-hint">.epub files</div>
       <input type="file" id="fileInput" accept=".epub">
     </div>
 

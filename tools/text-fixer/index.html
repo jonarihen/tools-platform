@@ -4,151 +4,74 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Text Fixer – tools.aaris.tech</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,100..900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <style>
-    .container { max-width: 800px; margin: 0 auto; padding: 48px 24px 80px; }
-    header { text-align: center; margin-bottom: 40px; }
-    .icon { font-size: 32px; margin-bottom: 12px; }
-    h1 {
-      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 8px;
-    }
-    .subtitle { font-size: 16px; color: rgba(255,255,255,0.45); font-weight: 300; }
+    .container { max-width: 800px; }
 
-    .badge {
-      display: inline-block; margin-top: 12px; padding: 6px 14px;
-      background: rgba(168,85,247,0.08); border: 1px solid rgba(168,85,247,0.2);
-      border-radius: 20px; font-size: 11px; font-weight: 600;
-      letter-spacing: 0.08em; color: #c084fc;
-      font-family: 'JetBrains Mono', monospace;
-    }
+    .badge-row { margin-top: 14px; }
 
-    label {
-      display: block; font-size: 13px; font-weight: 500;
-      color: rgba(255,255,255,0.5); margin-bottom: 8px;
-      font-family: 'Outfit', sans-serif;
-    }
+    label { display: block; margin-bottom: 8px; }
 
-    .editor-wrap { position: relative; margin-bottom: 8px; }
-
-    textarea {
-      width: 100%; min-height: 200px; padding: 20px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 14px; color: #e8e8ed; font-size: 14px; line-height: 1.7;
-      font-family: 'Outfit', sans-serif; outline: none; resize: vertical;
-      transition: border-color 0.2s;
-    }
-    textarea:focus { border-color: rgba(255,255,255,0.15); }
-    textarea::placeholder { color: rgba(255,255,255,0.15); }
+    textarea { min-height: 200px; padding: 16px; line-height: 1.7; }
 
     .stats {
       display: flex; gap: 16px; justify-content: flex-end;
-      font-size: 12px; font-family: 'JetBrains Mono', monospace;
-      color: rgba(255,255,255,0.2); margin-bottom: 24px;
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .06em; color: var(--dim);
+      margin: 8px 0 22px;
     }
 
-    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .actions button { flex: 1; }
 
-    .btn-primary {
-      padding: 14px 28px;
-      background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.05));
-      border: 1px solid rgba(168,85,247,0.3); border-radius: 12px;
-      color: #c084fc; font-size: 15px; font-weight: 600;
-      font-family: 'Outfit', sans-serif; cursor: pointer; flex: 1;
-      transition: all 0.2s;
-    }
-    .btn-primary:hover { background: linear-gradient(135deg, rgba(168,85,247,0.25), rgba(168,85,247,0.1)); }
-    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .output-section { margin-top: 20px; }
+    .output-header { display: flex; gap: 8px; margin-bottom: 12px; }
 
-    .btn-secondary {
-      padding: 14px 20px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
-      color: rgba(255,255,255,0.6); font-size: 14px; font-weight: 500;
-      font-family: 'Outfit', sans-serif; cursor: pointer; flex: 1;
-      transition: all 0.2s;
-    }
-    .btn-secondary:hover { border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
-
-    .output-section { margin-top: 8px; }
-
-    .output-header {
-      display: flex; gap: 8px; margin-bottom: 12px;
-    }
     .tab {
-      padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
-      font-family: 'Outfit', sans-serif; cursor: pointer; border: none;
-      background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.4);
-      transition: all 0.2s;
+      padding: 8px 16px;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .1em; text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color var(--dur-fast), color var(--dur-fast);
     }
+    .tab:hover { border-color: var(--accent); color: var(--ink); }
     .tab.active {
-      background: rgba(168,85,247,0.1); color: #c084fc;
-      border: 1px solid rgba(168,85,247,0.2);
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
     }
 
     .output-box {
-      width: 100%; min-height: 200px; padding: 20px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(168,85,247,0.1);
-      border-radius: 14px; color: #e8e8ed; font-size: 14px; line-height: 1.7;
-      font-family: 'Outfit', sans-serif;
+      width: 100%; min-height: 200px; padding: 16px;
+      background: var(--bg-raise);
+      border: 1px solid var(--line);
+      font-size: 14px; line-height: 1.7;
       white-space: pre-wrap; word-wrap: break-word;
     }
 
-    .diff-add {
-      background: rgba(34,197,94,0.15); color: #4ade80;
-      border-radius: 3px; padding: 0 2px;
-    }
-    .diff-remove {
-      background: rgba(239,68,68,0.15); color: #f87171;
-      text-decoration: line-through; border-radius: 3px; padding: 0 2px;
-    }
-
-    .status {
-      padding: 12px 16px; border-radius: 10px; font-size: 13px;
-      font-family: 'JetBrains Mono', monospace;
-      animation: fadeIn 0.3s ease;
-    }
-    .status.ok {
-      background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2);
-      color: #4ade80;
-    }
-    .status.error {
-      background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2);
-      color: #f87171;
-    }
-    .status.info {
-      background: rgba(168,85,247,0.08); border: 1px solid rgba(168,85,247,0.2);
-      color: #c084fc;
-    }
-
-    .spinner {
-      display: inline-block; width: 14px; height: 14px;
-      border: 2px solid rgba(168,85,247,0.2);
-      border-top-color: #c084fc; border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      vertical-align: middle; margin-right: 8px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
+    .diff-add    { background: var(--ok-dim); color: var(--ok); padding: 0 2px; }
+    .diff-remove { background: var(--danger-dim); color: var(--danger); text-decoration: line-through; padding: 0 2px; }
   </style>
 </head>
 <body>
+  <nav class="topbar">
+    <a href="/" class="topbar-brand">TOOLS.AARIS.TECH</a>
+    <span class="topbar-path">/ TOOLS / TEXT-FIXER</span>
+    <span class="topbar-right"><span class="led led-ok" aria-hidden="true"></span>OPERATIONAL</span>
+  </nav>
+
   <div class="container">
-    <a href="/" class="back">← tools.aaris.tech</a>
-    <header>
-      <div class="icon">✏️</div>
+    <header class="tool-head">
+      <div class="tool-kicker">01 / AI</div>
       <h1>Text Fixer</h1>
-      <p class="subtitle">Fix spelling and grammar with AI</p>
-      <div class="badge">AI-POWERED · LLAMA 3.1</div>
+      <p class="subtitle">Fix spelling and grammar with a self-hosted model — text is processed on local hardware, not a third-party cloud.</p>
+      <div class="badge-row"><span class="badge">LLAMA 3.1 · SELF-HOSTED · MAX 10,000 CHARS</span></div>
+      <div class="rule"></div>
     </header>
 
     <label for="input">Your text</label>

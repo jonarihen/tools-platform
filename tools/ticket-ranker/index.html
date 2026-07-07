@@ -4,26 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ticket Ranker – tools.aaris.tech</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,100..900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <style>
-    .container { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
-
-    .back-row { text-align: center; margin-bottom: 12px; }
-    header { text-align: center; margin-bottom: 48px; }
-    .icon { font-size: 32px; margin-bottom: 12px; }
-    h1 {
-      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 8px; text-align: center;
-    }
-    .subtitle { font-size: 16px; color: rgba(255,255,255,0.45); font-weight: 300; text-align: center; }
+    .container { max-width: 720px; }
 
     /* Phase panels */
     .phase { display: none; }
-    .phase.active { display: block; animation: fadeSlideIn 0.4s ease; }
+    .phase.active { display: block; animation: fadeSlideIn 0.4s var(--ease-out); }
 
     @keyframes resultSlide {
       from { opacity: 0; transform: translateX(-20px); }
@@ -31,194 +20,133 @@
     }
 
     /* Input phase */
-    .add-row { display: flex; gap: 10px; margin-bottom: 12px; }
-    .csv-row { display: flex; gap: 10px; margin-bottom: 24px; }
-    .csv-label {
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 10px 18px;
-      background: rgba(255,255,255,0.03);
-      border: 1px dashed rgba(255,255,255,0.1);
-      border-radius: 12px; color: rgba(255,255,255,0.35);
-      font-size: 13px; font-family: 'Outfit', sans-serif;
-      cursor: pointer; transition: all 0.2s; flex: 1; text-align: center;
-    }
-    .csv-label:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.05); }
+    .add-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .add-input { flex: 1; }
+    .csv-row { display: flex; gap: 8px; margin-bottom: 24px; }
+    .csv-label { flex: 1; border-style: dashed; }
     .csv-input { display: none; }
-    .add-input {
-      flex: 1; padding: 14px 18px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 12px; color: #e8e8ed;
-      font-size: 15px; font-family: 'Outfit', sans-serif; outline: none;
-    }
-    .add-input:focus { border-color: rgba(255,255,255,0.15); }
-    .add-btn {
-      padding: 14px 28px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px; color: #e8e8ed;
-      font-size: 15px; font-weight: 500;
-      font-family: 'Outfit', sans-serif; cursor: pointer;
-      transition: all 0.2s;
-    }
-    .add-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.18); }
 
     .ticket-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 32px; }
     .ticket-item {
       display: flex; align-items: center; gap: 12px;
-      padding: 12px 16px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 10px; animation: fadeIn 0.3s ease;
+      padding: 10px 14px;
+      background: var(--bg-raise); border: 1px solid var(--line);
+      animation: fadeIn 0.3s var(--ease-out);
     }
-    .ticket-num {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px; color: rgba(255,255,255,0.25); min-width: 20px;
-    }
-    .ticket-text { flex: 1; font-size: 14px; color: rgba(255,255,255,0.75); }
+    .ticket-num { font-family: var(--font-mono); font-size: 11px; color: var(--dim); min-width: 20px; }
+    .ticket-text { flex: 1; font-size: 14px; color: var(--ink); }
     .ticket-remove {
-      background: none; border: none; color: rgba(255,255,255,0.2);
+      background: none; border: none; color: var(--dim);
       font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1;
     }
-    .ticket-remove:hover { color: rgba(255,255,255,0.5); }
+    .ticket-remove:hover { color: var(--danger); }
 
-    .start-btn {
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 16px 32px; width: 100%;
-      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
-      border: 1px solid rgba(245,158,11,0.3); border-radius: 14px;
-      color: #f59e0b; font-size: 16px; font-weight: 600;
-      font-family: 'Outfit', sans-serif; cursor: pointer; transition: all 0.2s;
+    .start-btn { width: 100%; padding: 16px; }
+    .hint-text {
+      text-align: center; margin-top: 16px;
+      font-family: var(--font-mono); font-size: 12px; color: var(--dim);
     }
-    .start-btn:hover { background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(245,158,11,0.1)); }
-    .hint-text { text-align: center; color: rgba(255,255,255,0.25); font-size: 14px; margin-top: 16px; }
+
     .mode-toggle {
       display: none; align-items: flex-start; gap: 12px;
       padding: 14px 16px; margin-bottom: 24px;
-      background: rgba(255,255,255,0.025);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 12px;
+      background: var(--bg-raise); border: 1px solid var(--line);
+      cursor: pointer;
+      font-family: var(--font-sans);
+      text-transform: none; letter-spacing: normal;
     }
-    .mode-toggle input {
-      margin-top: 2px; width: 16px; height: 16px; accent-color: #f59e0b;
-      flex-shrink: 0;
-    }
-    .mode-copy { font-size: 14px; color: rgba(255,255,255,0.78); }
-    .mode-note { display: block; margin-top: 4px; color: rgba(255,255,255,0.38); font-size: 13px; line-height: 1.5; }
+    .mode-toggle input { margin-top: 3px; width: 15px; height: 15px; flex-shrink: 0; }
+    .mode-copy { font-size: 14px; color: var(--ink); }
+    .mode-note { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 
     /* Sorting phase */
-    .progress-track {
-      height: 3px; background: rgba(255,255,255,0.06);
-      border-radius: 2px; margin-bottom: 8px; overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #f59e0b, #3b82f6);
-      border-radius: 2px; transition: width 0.4s ease;
-    }
+    .progress-track { height: 3px; background: var(--line-soft); margin-bottom: 8px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
     .progress-label {
-      font-size: 13px; color: rgba(255,255,255,0.3);
-      font-family: 'JetBrains Mono', monospace;
-      text-align: center; margin-bottom: 40px;
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--muted); text-align: center; margin-bottom: 40px;
     }
-    .vs-row { display: flex; gap: 16px; align-items: center; margin-bottom: 32px; }
+
+    .vs-row { display: flex; gap: 14px; align-items: stretch; margin-bottom: 32px; }
     .choice-btn {
-      flex: 1; padding: 32px 24px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 16px; cursor: pointer; text-align: center;
-      font-family: 'Outfit', sans-serif; color: #e8e8ed;
-      transition: all 0.25s ease;
+      flex: 1; padding: 28px 22px;
+      background: var(--bg-raise); border: 1px solid var(--line);
+      cursor: pointer; text-align: center;
+      font-family: var(--font-sans); color: var(--ink);
+      transition: border-color var(--dur-fast), background var(--dur-fast);
       display: flex; flex-direction: column; align-items: center; gap: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3); min-height: 160px; justify-content: center;
+      min-height: 160px; justify-content: center;
     }
-    .choice-btn:hover { transform: translateY(-4px) scale(1.02); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
-    .choice-btn.a:hover { border-color: #f59e0b; }
-    .choice-btn.b:hover { border-color: #3b82f6; }
+    .choice-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
     .choice-label {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px; font-weight: 700;
-      color: rgba(255,255,255,0.2); letter-spacing: 0.1em;
+      font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+      color: var(--accent); letter-spacing: .12em;
     }
-    .choice-text { font-size: 17px; font-weight: 500; line-height: 1.4; word-break: break-word; white-space: pre-line; }
-    .choice-hint { font-size: 12px; color: rgba(255,255,255,0.2); font-weight: 300; }
+    .choice-text { font-size: 16px; font-weight: 500; line-height: 1.4; word-break: break-word; white-space: pre-line; }
+    .choice-hint {
+      font-family: var(--font-mono); font-size: 10px;
+      letter-spacing: .06em; text-transform: uppercase; color: var(--dim);
+    }
     .vs-badge {
-      width: 44px; height: 44px; border-radius: 50%;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
+      width: 44px; align-self: center; padding: 12px 0;
+      background: var(--bg-raise); border: 1px solid var(--line);
       display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700;
-      font-family: 'JetBrains Mono', monospace;
-      color: rgba(255,255,255,0.3); flex-shrink: 0;
+      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+      color: var(--dim); flex-shrink: 0;
     }
-    .group-grid { display: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .group-grid { display: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 28px; }
     .group-grid.active { display: grid; }
     .group-choice { min-height: 140px; }
-    .sort-tip { text-align: center; font-size: 13px; color: rgba(255,255,255,0.2); }
+    .sort-tip { text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--dim); }
 
     /* Done phase */
     .results-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 40px; }
     .result-item {
       display: flex; align-items: center; gap: 14px;
-      padding: 14px 18px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 12px;
-      animation: resultSlide 0.4s ease both;
+      padding: 12px 16px;
+      background: var(--bg-raise); border: 1px solid var(--line);
+      animation: resultSlide 0.4s var(--ease-out) both;
     }
     .rank-badge {
-      width: 32px; height: 32px; border-radius: 8px;
+      width: 30px; height: 30px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 14px; font-weight: 700;
-      font-family: 'JetBrains Mono', monospace; flex-shrink: 0;
+      font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+      flex-shrink: 0;
     }
-    .rank-gold   { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
-    .rank-silver { background: linear-gradient(135deg, #94a3b8, #64748b); color: #fff; }
-    .rank-bronze { background: linear-gradient(135deg, #b45309, #92400e); color: #fff; }
-    .rank-other  { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4); }
-    .result-text { flex: 1; font-size: 15px; }
+    .rank-gold   { background: var(--accent); color: #0b0d11; }
+    .rank-silver { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+    .rank-bronze { background: transparent; color: var(--warning); border: 1px solid rgba(255, 178, 36, .5); }
+    .rank-other  { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+    .result-text { flex: 1; font-size: 14px; }
     .top-badge {
-      font-size: 10px; font-weight: 700;
-      font-family: 'JetBrains Mono', monospace;
-      color: #f59e0b; letter-spacing: 0.1em;
+      font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      letter-spacing: .1em; color: var(--accent);
       padding: 4px 10px;
-      background: rgba(245,158,11,0.1); border-radius: 6px;
+      border: 1px solid var(--accent); background: var(--accent-dim);
     }
     .done-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-    .btn-secondary {
-      padding: 14px 24px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 12px; color: rgba(255,255,255,0.6);
-      font-size: 14px; font-weight: 500;
-      font-family: 'Outfit', sans-serif; cursor: pointer; transition: all 0.2s;
-    }
-    .btn-secondary:hover { border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
-    .btn-primary {
-      padding: 16px 32px;
-      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
-      border: 1px solid rgba(245,158,11,0.3); border-radius: 14px;
-      color: #f59e0b; font-size: 16px; font-weight: 600;
-      font-family: 'Outfit', sans-serif; cursor: pointer; transition: all 0.2s;
-    }
-    .btn-primary:hover { background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(245,158,11,0.1)); }
+
     @media (max-width: 640px) {
       .vs-row { flex-direction: column; }
-      .vs-badge { width: 100%; height: auto; padding: 10px 0; border-radius: 12px; }
+      .vs-badge { width: 100%; }
       .group-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="back-row">
-      <a href="/" class="back">← tools.aaris.tech</a>
-    </div>
+  <nav class="topbar">
+    <a href="/" class="topbar-brand">TOOLS.AARIS.TECH</a>
+    <span class="topbar-path">/ TOOLS / TICKET-RANKER</span>
+    <span class="topbar-right"><span class="led led-ok" aria-hidden="true"></span>OPERATIONAL</span>
+  </nav>
 
-    <header>
-      <div class="icon">⚡</div>
+  <div class="container">
+    <header class="tool-head">
+      <div class="tool-kicker">01 / PRODUCTIVITY</div>
       <h1>Ticket Ranker</h1>
       <p class="subtitle" id="subtitle">Add your tickets, then sort by comparing pairs</p>
+      <div class="rule"></div>
     </header>
 
     <!-- Input phase -->

@@ -84,7 +84,7 @@ This file tells the homepage what to display. Create `tools/my-tool-name/meta.js
 
 ### Step 3: Create `index.html`
 
-This is your actual tool. It must be a **fully self-contained HTML file** — everything it needs must be either inline or loaded from a CDN.
+This is your actual tool. It must be a **fully self-contained HTML file** — everything it needs must be either inline or loaded from a CDN. The platform serves a shared design-system stylesheet at `/style.css` (the AARIS design language) — always link it before your own styles.
 
 #### Minimal template:
 
@@ -95,38 +95,29 @@ This is your actual tool. It must be a **fully self-contained HTML file** — ev
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Tool – tools.aaris.tech</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,100..900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      min-height: 100vh;
-      background: linear-gradient(160deg, #0c0c0f 0%, #141420 40%, #0f1118 100%);
-      font-family: 'Outfit', sans-serif;
-      color: #e8e8ed;
-    }
-    .container { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
-    .back {
-      display: inline-block; margin-bottom: 12px; font-size: 13px;
-      font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.2);
-      text-decoration: none; letter-spacing: 0.1em;
-    }
-    h1 {
-      font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      text-align: center; margin-bottom: 8px;
-    }
-    .subtitle {
-      text-align: center; font-size: 16px;
-      color: rgba(255,255,255,0.45); font-weight: 300; margin-bottom: 40px;
-    }
+    /* Page-specific styles only. Use the shared CSS custom properties
+       (var(--accent), var(--line), ...) — never hard-coded colors. */
+    .container { max-width: 720px; }
   </style>
 </head>
 <body>
+  <nav class="topbar">
+    <a href="/" class="topbar-brand">TOOLS.AARIS.TECH</a>
+    <span class="topbar-path">/ TOOLS / MY-TOOL-NAME</span>
+    <span class="topbar-right"><span class="led led-ok" aria-hidden="true"></span>OPERATIONAL</span>
+  </nav>
+
   <div class="container">
-    <a href="/" class="back">← tools.aaris.tech</a>
-    <h1>My Tool Name</h1>
-    <p class="subtitle">Short description of the tool</p>
+    <header class="tool-head">
+      <div class="tool-kicker">01 / UTILITY</div>
+      <h1>My Tool Name</h1>
+      <p class="subtitle">Short description of the tool.</p>
+      <div class="rule"></div>
+    </header>
 
     <!-- Your tool UI here -->
 
@@ -134,6 +125,7 @@ This is your actual tool. It must be a **fully self-contained HTML file** — ev
   <script>
     // Your tool logic here
   </script>
+<script src="/track.js"></script>
 </body>
 </html>
 ```
@@ -148,178 +140,79 @@ That's it. The tool now appears on the homepage and is accessible at its URL.
 
 ---
 
-## Design Guidelines
+## Design Guidelines — the AARIS design language
 
-All tools should follow this visual style to look consistent with the platform:
+The platform uses the **AARIS design language**: a dark, square, thin-bordered, orange-accent "operator console" style. It should feel like a homelab dashboard or a datacenter asset tag — technical, readable, low-noise. Not a generic SaaS page.
+
+Most of it is already implemented in the shared stylesheet at **`/style.css`** — link it and you get the page background + grid, typography, buttons, form controls, status boxes, tags, LEDs, and toasts for free. Your inline `<style>` should only contain page-specific layout.
 
 ### Required fonts (load from Google Fonts):
 
 ```html
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62.5..125,100..900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 ```
 
-- **Outfit** — primary UI font (headings, body text, buttons)
-- **JetBrains Mono** — monospace accent font (labels, tags, numbers, code)
+- **Archivo** — primary UI font. Headings are heavy (800–900), uppercase, slightly expanded (`font-stretch: 110–125%`)
+- **IBM Plex Mono** — monospace for labels, tags, numbers, metadata, buttons, timestamps
 
-### Color palette:
+### Design tokens (defined in `/style.css`, use them everywhere):
 
 ```css
-/* Background */
-background: linear-gradient(160deg, #0c0c0f 0%, #141420 40%, #0f1118 100%);
-
-/* Text colors */
-color: #e8e8ed;                      /* Primary text */
-color: rgba(255,255,255,0.75);       /* Secondary text */
-color: rgba(255,255,255,0.45);       /* Muted text */
-color: rgba(255,255,255,0.25);       /* Faint text / hints */
-color: rgba(255,255,255,0.2);        /* Barely visible */
-
-/* Accent color (amber/gold) */
-color: #f59e0b;
-background: rgba(245,158,11,0.15);
-border-color: rgba(245,158,11,0.3);
-
-/* Secondary accent (blue) */
-color: #3b82f6;
-
-/* Surfaces */
-background: rgba(255,255,255,0.02);  /* Card background */
-background: rgba(255,255,255,0.04);  /* Slightly raised surface */
-background: rgba(255,255,255,0.06);  /* Button / badge background */
-
-/* Borders */
-border: 1px solid rgba(255,255,255,0.06);  /* Subtle */
-border: 1px solid rgba(255,255,255,0.08);  /* Default */
-border: 1px solid rgba(255,255,255,0.1);   /* Emphasized */
-border: 1px solid rgba(255,255,255,0.15);  /* Hover state */
+var(--bg)        /* #0e1014  page background */
+var(--bg-raise)  /* #12151a  cards, panels */
+var(--bg-input)  /* #0b0d11  input fields */
+var(--ink)       /* #e9ecef  primary text */
+var(--muted)     /* #8b939e  secondary text */
+var(--dim)       /* #4d545e  low-priority metadata */
+var(--line)      /* #232830  borders */
+var(--line-soft) /* #1a1e25  internal dividers */
+var(--accent)    /* #ff5a1f  THE action color (orange) */
+var(--ok)        /* #3fd97f  healthy status only */
+var(--warning)   /* #ffb224  warnings/activity only */
+var(--danger)    /* #e5484d  errors only */
+var(--font-sans) / var(--font-mono)
 ```
 
-### Common CSS base (include in every tool):
+### Hard rules:
+
+- **Square corners** — `border-radius: 0` everywhere. No pills, no rounded cards.
+- **Thin borders, no shadows** — `1px solid var(--line)`, never `box-shadow`.
+- **Orange is the only accent** — active states, primary buttons, hover borders. Green/amber are for status LEDs only, never decoration. No blue/purple accents.
+- **Mono labels** — every label, tag, hint, and counter is `var(--font-mono)`, uppercase, letter-spaced.
+- **Never hard-code colors** — always the tokens above.
+- Respect `prefers-reduced-motion` (the shared stylesheet already disables animation for it).
+
+### Shared components you get from `/style.css` (just use the class names):
+
+| Class / element | What it gives you |
+|---|---|
+| `.topbar`, `.topbar-brand`, `.topbar-path`, `.topbar-right` | Fixed top status bar (see template) |
+| `.tool-head`, `.tool-kicker`, `h1`, `.subtitle`, `.rule` | Standard tool header block |
+| `.btn-primary` | Orange-filled primary action button |
+| `.btn-secondary` | Thin-bordered secondary button (hover → orange border) |
+| `input`, `select`, `textarea`, `label` | Already fully styled — dark inset fields, orange focus |
+| `.status.ok` / `.status.error` / `.status.info` | Status message boxes |
+| `.panel`, `.panel-title` | Bordered raised panel with mono header |
+| `.tag`, `.badge` | Small bordered mono uppercase labels |
+| `.led.led-ok` / `.led-warning` / `.led-error` / `.led-off` / `.led-blink` | 8px square status LEDs |
+| `.dropzone` | Dashed-border file drop area |
+| `.spinner` | Blinking-LED loading indicator |
+| `.toast` | Fixed bottom toast |
+| `.hidden` | `display: none !important` |
+| `@keyframes fadeIn` / `fadeSlideIn` | Shared entry animations |
+
+### Page-specific styles:
+
+Set your container width and lay out your panels — that's usually all you need:
 
 ```css
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  min-height: 100vh;
-  background: linear-gradient(160deg, #0c0c0f 0%, #141420 40%, #0f1118 100%);
-  font-family: 'Outfit', sans-serif;
-  color: #e8e8ed;
-}
+.container { max-width: 720px; }   /* 640–980px depending on the tool */
+.my-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 ```
 
-### Component patterns:
+### Writing style:
 
-**Page container:**
-```css
-.container {
-  max-width: 720px;    /* or 960px for wider tools */
-  margin: 0 auto;
-  padding: 48px 24px 80px;
-}
-```
-
-**Back link to homepage (include at top of every tool):**
-```html
-<a href="/" class="back">← tools.aaris.tech</a>
-```
-
-```css
-.back {
-  display: inline-block; margin-bottom: 12px; font-size: 13px;
-  font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,0.2);
-  text-decoration: none; letter-spacing: 0.1em;
-}
-```
-
-**Page title:**
-```css
-h1 {
-  font-size: 40px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #f8f8ff 0%, #a0a0b8 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-align: center;
-}
-```
-
-**Text input:**
-```css
-input[type="text"], input[type="number"], textarea {
-  padding: 14px 18px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  color: #e8e8ed;
-  font-size: 15px;
-  font-family: 'Outfit', sans-serif;
-  outline: none;
-  width: 100%;
-}
-```
-
-**Primary button (amber accent):**
-```css
-.btn-primary {
-  padding: 16px 32px;
-  background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
-  border: 1px solid rgba(245,158,11,0.3);
-  border-radius: 14px;
-  color: #f59e0b;
-  font-size: 16px;
-  font-weight: 600;
-  font-family: 'Outfit', sans-serif;
-  cursor: pointer;
-}
-```
-
-**Secondary button:**
-```css
-.btn-secondary {
-  padding: 14px 24px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  color: rgba(255,255,255,0.6);
-  font-size: 14px;
-  font-weight: 500;
-  font-family: 'Outfit', sans-serif;
-  cursor: pointer;
-}
-```
-
-**Card / list item:**
-```css
-.card {
-  padding: 14px 18px;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 12px;
-}
-```
-
-**Small tag / badge:**
-```css
-.tag {
-  font-size: 10px;
-  font-weight: 700;
-  font-family: 'JetBrains Mono', monospace;
-  letter-spacing: 0.1em;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.4);
-}
-```
-
-**Fade-in animation:**
-```css
-@keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-```
+Direct and practical, like a technical person wrote it — not marketing. "Convert files without sending them to a random cloud service", not "Unlock seamless digital experiences". Uppercase mono for labels (`PAGE SIZE`, `EXPIRES AFTER`), plain sentences for descriptions.
 
 ---
 
@@ -441,7 +334,7 @@ Most tools should still be purely client-side. Only use the API when you need se
 4. Folder name = URL slug — use lowercase letters, numbers, and hyphens only (e.g. `password-generator`, `json-formatter`)
 5. Don't modify anything outside the `tools/` directory — the platform files should never be changed
 6. Valid JSON only in `meta.json` — no comments, no trailing commas
-7. Include the back link — every tool should have a `← tools.aaris.tech` link back to the homepage
+7. Include the fixed `.topbar` — its `TOOLS.AARIS.TECH` brand is the link back to the homepage
 
 ---
 
@@ -460,8 +353,11 @@ Both go inside a folder named with the tool's slug (e.g. `tools/my-tool-name/`).
 
 - `tools/my-tool/meta.json` exists and is valid JSON
 - `tools/my-tool/index.html` exists and is a complete HTML page
-- Tool loads the correct fonts (Outfit + JetBrains Mono)
-- Tool uses the dark theme (dark background, light text)
-- Tool has a back link to the homepage
+- Links the shared stylesheet: `<link rel="stylesheet" href="/style.css">`
+- Loads the correct fonts (Archivo + IBM Plex Mono)
+- Has the fixed `.topbar` with brand link back to the homepage
+- Uses the standard `.tool-head` header (kicker, h1, subtitle, rule)
+- Uses design tokens (`var(--accent)` etc.), square corners, no shadows
+- Includes `<script src="/track.js"></script>` before `</body>`
 - Title tag follows format: `Tool Name – tools.aaris.tech`
 - Run `docker compose restart` to pick up the new tool
