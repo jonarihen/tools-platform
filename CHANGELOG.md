@@ -6,6 +6,11 @@ All notable changes to tools.aaris.tech are documented here.
 
 ## [Unreleased]
 
+### Security & hardening fixes (code review follow-up)
+- **Security headers on every response** — nginx locations that set their own `Cache-Control` (tool `index.html`, `manifest.json`, static assets) were silently dropping the inherited CSP and security headers, because nginx cancels inherited `add_header` in any block that declares its own. The headers now live in `security-headers.conf` and are re-included in each of those locations
+- **EPUB conversion rate limit** — `/api/convert/epub-to-pdf` is now limited to 10 conversions per IP per hour; it was the only heavy endpoint without a limit, allowing unbounded concurrent Calibre + WeasyPrint jobs
+- **Clamped conversion options** — `margin` and `font_size` are now clamped to sane ranges (5–50 mm, 8–24 pt) on both PDF endpoints instead of accepting any digit string (e.g. a 99999 mm margin)
+
 ### AARIS design language rollout (UX upgrade)
 - **Shared design system** — `public/style.css` is now a full AARIS design system (dark operator-console style: near-black background with a subtle technical grid, thin `#232830` borders, square corners, orange `#ff5a1f` accent, Archivo + IBM Plex Mono). All pages link it before their page-specific styles
 - **Landing page redesign** — fixed status bar with live clock and OPERATIONAL LED, numbered section header, tool cards as bordered grid cells with index numbers, grayscale-to-color icons, and mono tags

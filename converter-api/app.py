@@ -159,6 +159,10 @@ def _get_active_share(key):
 ALLOWED_PAGE_SIZES = {'a4', 'a5', 'a3', 'letter', 'legal'}
 CALIBRE_TIMEOUT = 900
 WEASYPRINT_TIMEOUT = 900
+EPUB_RATE_LIMIT = 10        # Conversions per IP per window (Calibre+WeasyPrint are heavy)
+EPUB_RATE_WINDOW = 3600
+MARGIN_MM_RANGE = (5, 50, 15)      # (min, max, default)
+FONT_SIZE_PT_RANGE = (8, 24, 13)
 WEB_NOVEL_TIMEOUT = 3600
 WEB_NOVEL_FETCH_TIMEOUT = (10, 45)
 WEB_NOVEL_FETCH_DELAY = 0.35
@@ -421,8 +425,20 @@ def _run_conversion(job_id, epub_path, htmlz_path, pdf_path, cmd, page_size, mar
         shutil.rmtree(os.path.join(UPLOAD_DIR, f'{job_id}_htmlz'), ignore_errors=True)
 
 
+def _clamp_int_option(raw, bounds):
+    """Digits-only parse clamped to (min, max, default); returned as a string."""
+    lo, hi, default = bounds
+    digits = ''.join(c for c in (raw or '') if c.isdigit())
+    return str(min(max(int(digits), lo), hi)) if digits else str(default)
+
+
 @app.route('/api/convert/epub-to-pdf', methods=['POST'])
 def start_epub_to_pdf():
+    client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+    if not _check_rate_limit(client_ip, 'epub-to-pdf', EPUB_RATE_LIMIT, EPUB_RATE_WINDOW):
+        logger.warning('EPUB conversion rate limit exceeded for %s', client_ip)
+        return {'error': 'Conversion limit reached. Please try again later.'}, 429
+
     if 'file' not in request.files:
         return {'error': 'No file uploaded'}, 400
     file = request.files['file']
@@ -431,8 +447,8 @@ def start_epub_to_pdf():
     page_size = request.form.get('page_size', 'a4').lower()
     if page_size not in ALLOWED_PAGE_SIZES:
         page_size = 'a4'
-    margin    = ''.join(c for c in request.form.get('margin', '15')    if c.isdigit()) or '15'
-    font_size = ''.join(c for c in request.form.get('font_size', '13') if c.isdigit()) or '13'
+    margin    = _clamp_int_option(request.form.get('margin'), MARGIN_MM_RANGE)
+    font_size = _clamp_int_option(request.form.get('font_size'), FONT_SIZE_PT_RANGE)
     job_id    = str(uuid.uuid4())[:8]
     epub_path = os.path.join(UPLOAD_DIR, f'{job_id}.epub')
     htmlz_path = os.path.join(UPLOAD_DIR, f'{job_id}.htmlz')
@@ -1027,8 +1043,8 @@ def start_web_novel_to_pdf():
     page_size = request.form.get('page_size', 'a4').lower()
     if page_size not in ALLOWED_PAGE_SIZES:
         page_size = 'a4'
-    margin = ''.join(c for c in request.form.get('margin', '15') if c.isdigit()) or '15'
-    font_size = ''.join(c for c in request.form.get('font_size', '13') if c.isdigit()) or '13'
+    margin = _clamp_int_option(request.form.get('margin'), MARGIN_MM_RANGE)
+    font_size = _clamp_int_option(request.form.get('font_size'), FONT_SIZE_PT_RANGE)
     include_author_notes = request.form.get('include_author_notes', '').lower() in {'1', 'true', 'yes', 'on'}
 
     job_id = str(uuid.uuid4())[:8]
