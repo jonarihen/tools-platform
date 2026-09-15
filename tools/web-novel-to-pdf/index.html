@@ -71,6 +71,8 @@
       <div class="panel-title">Source Support</div>
       <div class="support-line"><strong>Royal Road:</strong> supported for full-fiction exports from a fiction or chapter URL.</div>
       <div class="support-line"><strong>Scribble Hub:</strong> supported for full-series exports from a series or chapter URL.</div>
+      <div class="support-line"><strong>Webnovel.com:</strong> public server-rendered books and catalogs only. Locked chapters are skipped and listed in the result and PDF; no login or paywall bypass.</div>
+      <div class="support-line">Choose an optional inclusive chapter range (catalog positions, starting at 1; maximum 1,000 per export). Blank end means the end of the available catalog.</div>
       <div class="warning">Use this only for works you have permission to export for personal accessibility use.</div>
     </div>
 
@@ -111,6 +113,17 @@
           <option value="14">Large (14pt)</option>
           <option value="16">Extra large (16pt)</option>
         </select>
+      </div>
+    </div>
+
+    <div class="settings">
+      <div class="setting-group">
+        <label for="startChapter">First chapter</label>
+        <input id="startChapter" type="number" min="1" step="1" placeholder="1">
+      </div>
+      <div class="setting-group">
+        <label for="endChapter">Last chapter</label>
+        <input id="endChapter" type="number" min="1" step="1" placeholder="End of catalog">
       </div>
     </div>
 
@@ -176,8 +189,8 @@
             .then(function(data) {
               if (data.status === 'done') {
                 clearInterval(timer);
-                onProgress(100, 'Conversion complete');
-                resolve();
+                 onProgress(100, data.message || 'Conversion complete');
+                 resolve(data.message || 'Conversion complete');
               } else if (data.status === 'error' || data.status === 'not_found') {
                 clearInterval(timer);
                 reject(new Error(data.message || 'Conversion failed'));
@@ -234,7 +247,15 @@
       var url = normaliseUrl(input.value);
 
       if (!url) {
-        showStatus('Paste a Royal Road or Scribble Hub fiction URL first.', 'error');
+        showStatus('Paste a Royal Road, Scribble Hub or Webnovel.com book URL first.', 'error');
+        return;
+      }
+
+      var start = document.getElementById('startChapter');
+      var end = document.getElementById('endChapter');
+      if (!start.checkValidity() || !end.checkValidity() ||
+          (end.value && Number(end.value) < Number(start.value || 1))) {
+        showStatus('Enter positive whole chapter positions, with last at or after first.', 'error');
         return;
       }
 
@@ -247,6 +268,8 @@
 
       var formData = new FormData();
       formData.append('url', url);
+      formData.append('start_chapter', start.value);
+      formData.append('end_chapter', end.value);
       formData.append('page_size', document.getElementById('pageSize').value);
       formData.append('margin', document.getElementById('margin').value);
       formData.append('font_size', document.getElementById('fontSize').value);
@@ -263,7 +286,7 @@
 
       try {
         var jobId = await startExport(formData);
-        await pollProgress(jobId, function(pct, msg) {
+        var summary = await pollProgress(jobId, function(pct, msg) {
           progressFill.style.width = Math.max(6, pct) + '%';
           progressText.textContent = msg;
         });
@@ -274,7 +297,7 @@
 
         progressFill.style.width = '100%';
         progressText.textContent = 'Done!';
-        showStatus('✓ PDF saved to your downloads', 'ok');
+        showStatus('PDF saved to your downloads. ' + summary, 'ok');
       } catch (e) {
         progressFill.style.width = '0%';
         progressText.textContent = '';

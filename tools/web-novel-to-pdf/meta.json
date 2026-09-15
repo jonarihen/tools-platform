@@ -1,6 +1,6 @@
 {
   "name": "Web Novel to PDF",
-  "description": "Turn a supported web novel URL into a tagged PDF for offline TTS and screen readers",
+  "description": "Export Royal Road, Scribble Hub and public Webnovel.com chapters to tagged PDF for offline TTS, with chapter ranges and locked-chapter reporting",
   "icon": "📚",
   "tag": "converter",
   "order": 4

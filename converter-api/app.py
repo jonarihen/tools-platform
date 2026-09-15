@@ -174,7 +174,8 @@ WEB_NOVEL_RATE_WINDOW = 3600
 WEB_NOVEL_USER_AGENT = 'tools.aaris.tech/1.0 (+https://tools.aaris.tech)'
 ROYALROAD_HOSTS = {'royalroad.com', 'www.royalroad.com'}
 SCRIBBLEHUB_HOSTS = {'scribblehub.com', 'www.scribblehub.com'}
-WEB_NOVEL_HOSTS = ROYALROAD_HOSTS | SCRIBBLEHUB_HOSTS
+WEBNOVEL_HOSTS = {'webnovel.com', 'www.webnovel.com'}
+WEB_NOVEL_HOSTS = ROYALROAD_HOSTS | SCRIBBLEHUB_HOSTS | WEBNOVEL_HOSTS
 WEB_NOVEL_ASSET_SUFFIXES = ('royalroadcdn.com', 'scribblehub.com')
 
 _jobs      = {}
@@ -504,7 +505,7 @@ def _normalise_web_novel_url(raw_url):
     if parsed.username or parsed.password or parsed.port not in (None, 80, 443):
         raise ValueError('Unsupported URL format')
     if host not in WEB_NOVEL_HOSTS:
-        raise ValueError('Only Royal Road and Scribble Hub URLs are supported')
+        raise ValueError('Only Royal Road, Scribble Hub and Webnovel.com URLs are supported')
 
     if host in ROYALROAD_HOSTS:
         match = re.match(r'^/fiction/(\d+)(/[^/?#]+)?(?:/chapter/\d+/[^/?#]+)?/?$', parsed.path or '')
@@ -512,12 +513,17 @@ def _normalise_web_novel_url(raw_url):
             raise ValueError('Paste a Royal Road fiction or chapter URL')
         path = f'/fiction/{match.group(1)}{match.group(2) or ""}'
         host = 'www.royalroad.com'
+    elif host in WEBNOVEL_HOSTS:
+        match = re.fullmatch(r'/book/([^/]+_\d+)(?:/(?:catalog|[^/]+_\d+))?/?', parsed.path)
+        if not match:
+            raise ValueError('Paste a Webnovel.com book, catalog or chapter URL')
+        return f'https://www.webnovel.com/book/{match.group(1)}', 'www.webnovel.com'
     else:
         path = parsed.path or '/'
         read_match = re.match(r'^/read/(\d+)-([^/]+)/chapter/\d+/?$', path)
         if read_match:
             path = f'/series/{read_match.group(1)}/{read_match.group(2)}/'
-        elif not path.startswith('/series/'):
+        elif not re.fullmatch(r'/series/\d+/[^/]+/?', path):
             raise ValueError('Paste a Scribble Hub series or chapter URL')
         host = 'www.scribblehub.com'
 
@@ -526,6 +532,7 @@ def _normalise_web_novel_url(raw_url):
 
 def _build_web_novel_session():
     session = http_requests.Session()
+    session.trust_env = False
     session.headers.update({
         'User-Agent': WEB_NOVEL_USER_AGENT,
         'Accept-Language': 'en-US,en;q=0.8',
@@ -544,16 +551,39 @@ def _fetch_allowed_response(session, url, allowed_hosts=None, allowed_suffixes=(
         if not _host_allowed(parsed.hostname, allowed_hosts=allowed_hosts, allowed_suffixes=allowed_suffixes):
             raise RuntimeError('Redirected to an unsupported host')
 
-        response = session.get(current_url, timeout=WEB_NOVEL_FETCH_TIMEOUT, allow_redirects=False)
+        session.cookies.clear()
+        response = session.get(
+            current_url, timeout=WEB_NOVEL_FETCH_TIMEOUT, allow_redirects=False,
+            stream=True, headers={'Authorization': None, 'Cookie': None, 'Referer': None},
+        )
         if response.is_redirect or response.is_permanent_redirect:
             location = response.headers.get('Location')
+            response.close()
             if not location:
-                break
+                raise RuntimeError('Source returned a redirect without a destination')
             current_url = urljoin(current_url, location)
             continue
+        _read_source_response(response)
         return response, current_url
 
     raise RuntimeError('Too many redirects while fetching source')
+
+
+def _read_source_response(response):
+    chunks = []
+    size = 0
+    started = time.monotonic()
+    try:
+        for chunk in response.iter_content(65536):
+            size += len(chunk)
+            if size > 10 * 1024 * 1024:
+                raise RuntimeError('Source response exceeds the 10 MB limit')
+            if time.monotonic() - started > 90:
+                raise RuntimeError('Source response took too long to download')
+            chunks.append(chunk)
+        response._content = b''.join(chunks)
+    finally:
+        response.close()
 
 
 def _check_cloudflare(response):
@@ -618,15 +648,88 @@ def _extract_json_ld_book(soup):
     return {}
 
 
+def _remove_hidden_content(soup):
+    hidden_style = re.compile(
+        r'(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse)|'
+        r'content-visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0*)?)\s*(?:!important\s*)?(?:;|$)',
+        re.I,
+    )
+    hidden_nodes = []
+    declarations_by_node = {}
+    uncertain = bool(soup.select('link[rel="stylesheet"]'))
+    declaration_pattern = re.compile(r'^([a-z-]+)\s*:\s*([^{};]+)$', re.I)
+
+    def record(node, declarations):
+        nonlocal uncertain
+        properties = declarations_by_node.setdefault(id(node), {})
+        for declaration in declarations.split(';'):
+            if not declaration.strip():
+                continue
+            match = declaration_pattern.fullmatch(declaration.strip())
+            if not match:
+                uncertain = True
+                continue
+            name, value = match.groups()
+            name = name.lower()
+            if name in {'all', 'animation', 'animation-name', 'transition', 'transition-property'}:
+                uncertain = True
+            properties.setdefault(name, []).append(bool(hidden_style.fullmatch(f'{name}:{value}')))
+
+    for style in soup.find_all('style'):
+        css = re.sub(r'/\*.*?\*/', '', style.get_text(), flags=re.S)
+        if style.get('media', '').strip().lower() not in {'', 'all'} or '@' in css:
+            uncertain = True
+            continue
+        rules = list(re.finditer(r'([^{}]+)\{([^{}]*)\}', css))
+        if re.sub(r'([^{}]+)\{([^{}]*)\}', '', css).strip():
+            uncertain = True
+        for rule in rules:
+            selectors, declarations = rule.groups()
+            for selector in selectors.split(','):
+                selector = selector.strip()
+                if not re.fullmatch(r'[a-zA-Z0-9_.#\s>+~*-]+', selector):
+                    uncertain = True
+                    continue
+                try:
+                    matches = soup.select(selector)
+                except Exception:
+                    uncertain = True
+                    continue
+                for node in matches:
+                    record(node, declarations)
+    for node in soup.find_all(True):
+        record(node, node.get('style', ''))
+    for node in soup.find_all(True):
+        properties = declarations_by_node.get(id(node), {})
+        css_hidden = not uncertain and any(
+            values and all(values) and not (
+                name == 'visibility' and any(
+                    False in declarations_by_node.get(id(child), {}).get(name, [])
+                    for child in node.find_all(True)
+                )
+            )
+            for name, values in properties.items()
+        )
+        if node.has_attr('hidden') or str(node.get('aria-hidden', '')).lower() == 'true' or css_hidden:
+            hidden_nodes.append(node)
+        node.attrs.pop('style', None)
+    for style in soup.find_all('style'):
+        style.decompose()
+    for node in hidden_nodes:
+        if node.parent is not None:
+            node.decompose()
+
+
 def _sanitise_fragment(node, allow_images=False):
     if node is None:
         return ''
 
     fragment = BeautifulSoup(str(node), 'html.parser')
-    for tag in fragment(['script', 'style', 'noscript', 'iframe', 'form', 'input', 'button', 'textarea', 'svg', 'canvas']):
+    _remove_hidden_content(fragment)
+    for tag in fragment(['script', 'style', 'noscript', 'iframe', 'form', 'input', 'button', 'textarea', 'svg', 'canvas', 'object', 'embed', 'link', 'meta', 'base']):
         tag.decompose()
 
-    for selector in ('.btn', '.hidden', '.sr-only', '.adsbygoogle', '.chapter-nav', '.nav-buttons'):
+    for selector in ('.btn', '.adsbygoogle', '.chapter-nav', '.nav-buttons'):
         for el in fragment.select(selector):
             el.decompose()
 
@@ -635,15 +738,10 @@ def _sanitise_fragment(node, allow_images=False):
             tag.decompose()
 
     for tag in fragment.find_all(True):
-        for attr in (
-            'style', 'class', 'id', 'onclick', 'onload', 'data-page', 'data-id',
-            'role', 'aria-hidden', 'width', 'height'
-        ):
-            tag.attrs.pop(attr, None)
-        if tag.name == 'a':
-            href = tag.get('href')
-            if href:
-                tag['href'] = href
+        href = tag.get('href', '') if tag.name == 'a' else ''
+        tag.attrs = {}
+        if href and (href.startswith('#') or urlparse(href).scheme in {'http', 'https'}):
+            tag['href'] = href
         if tag.name in {'span', 'font'} and not tag.attrs:
             tag.unwrap()
 
@@ -665,12 +763,16 @@ def _download_cover_asset(session, cover_url, work_dir):
     response, _ = _fetch_allowed_response(session, cover_url, allowed_suffixes=WEB_NOVEL_ASSET_SUFFIXES)
     response.raise_for_status()
 
-    content_type = (response.headers.get('Content-Type') or '').lower()
-    ext = '.jpg'
-    if 'png' in content_type:
+    content_type = (response.headers.get('Content-Type') or '').lower().split(';')[0]
+    content = response.content
+    if content_type == 'image/jpeg' and content.startswith(b'\xff\xd8\xff'):
+        ext = '.jpg'
+    elif content_type == 'image/png' and content.startswith(b'\x89PNG\r\n\x1a\n'):
         ext = '.png'
-    elif 'webp' in content_type:
+    elif content_type == 'image/webp' and content.startswith(b'RIFF') and content[8:12] == b'WEBP':
         ext = '.webp'
+    else:
+        return None
 
     filename = 'cover' + ext
     with open(os.path.join(work_dir, filename), 'wb') as fp:
@@ -719,7 +821,29 @@ def _extract_royalroad_metadata(series_soup):
     }
 
 
-def _extract_royalroad_chapters(session, series_url, include_author_notes, job_id):
+def _select_chapters(items, start_chapter=1, end_chapter=None):
+    end = len(items) if end_chapter is None else end_chapter
+    if start_chapter < 1 or end < start_chapter or end > len(items):
+        raise ValueError(f'Chapter range must be within 1–{len(items)}')
+    selected = list(enumerate(items, start=1))[start_chapter - 1:end]
+    if len(selected) > WEB_NOVEL_MAX_CHAPTERS:
+        raise ValueError(f'The per-export limit is {WEB_NOVEL_MAX_CHAPTERS} chapters; select a smaller range')
+    return selected
+
+
+def _export_summary(metadata, selected, chapters, skipped=None):
+    skipped = skipped or []
+    metadata.update(chapter_count=len(chapters), selected_count=len(selected), skipped_chapters=skipped)
+    first, last = selected[0][0], selected[-1][0]
+    message = f'Exported {len(chapters)} of {len(selected)} selected chapters (catalog positions {first}–{last}).'
+    if skipped:
+        message += ' Skipped locked chapters: ' + ', '.join(str(item) for item in skipped) + '.'
+    metadata['export_summary'] = message
+    if not chapters:
+        raise RuntimeError(message + ' No public readable chapters are available in this range.')
+
+
+def _extract_royalroad_chapters(session, series_url, include_author_notes, job_id, start_chapter=1, end_chapter=None):
     response, final_url = _retry_fetch(
         lambda: _fetch_allowed_response(session, series_url, allowed_hosts=ROYALROAD_HOSTS)
     )
@@ -729,20 +853,19 @@ def _extract_royalroad_chapters(session, series_url, include_author_notes, job_i
     chapter_rows = series_soup.select('#chapters tr.chapter-row')
     if not chapter_rows:
         raise RuntimeError('No chapter list found on the Royal Road fiction page')
-    if len(chapter_rows) > WEB_NOVEL_MAX_CHAPTERS:
-        raise RuntimeError(f'This fiction has {len(chapter_rows)} chapters. The per-export limit is {WEB_NOVEL_MAX_CHAPTERS}.')
+    selected = _select_chapters(chapter_rows, start_chapter, end_chapter)
 
     chapters = []
     seen_urls = set()
     deadline = time.time() + WEB_NOVEL_TIMEOUT
 
-    for index, row in enumerate(chapter_rows, start=1):
+    for index, row in selected:
         if time.time() > deadline:
             raise RuntimeError('Web novel export timed out after 60 minutes')
 
         link = row.select_one('a[href*="/chapter/"]')
         if not link:
-            continue
+            raise RuntimeError(f'Missing link for catalog chapter {index}')
         chapter_url = urljoin(final_url, link.get('href'))
         if chapter_url in seen_urls:
             continue
@@ -755,6 +878,7 @@ def _extract_royalroad_chapters(session, series_url, include_author_notes, job_i
             lambda: _fetch_allowed_response(session, chapter_url, allowed_hosts=ROYALROAD_HOSTS)
         )
         chapter_soup = BeautifulSoup(chapter_response.text, 'html.parser')
+        _remove_hidden_content(chapter_soup)
 
         title_el = chapter_soup.select_one('.fic-header h1') or chapter_soup.select_one('h1')
         chapter_title = title_el.get_text(' ', strip=True) if title_el else f'Chapter {index}'
@@ -770,6 +894,8 @@ def _extract_royalroad_chapters(session, series_url, include_author_notes, job_i
                 if cleaned and BeautifulSoup(cleaned, 'html.parser').get_text(' ', strip=True):
                     note_html.append(cleaned)
 
+        for note in content_node.select('.wi_authornotes, .author-note-portlet'):
+            note.decompose()
         chapter_html = _sanitise_fragment(content_node)
         if not chapter_html or not BeautifulSoup(chapter_html, 'html.parser').get_text(' ', strip=True):
             raise RuntimeError(f'Chapter {index} did not contain readable text')
@@ -783,7 +909,7 @@ def _extract_royalroad_chapters(session, series_url, include_author_notes, job_i
         if index < len(chapter_rows):
             time.sleep(WEB_NOVEL_FETCH_DELAY)
 
-    metadata['chapter_count'] = len(chapters)
+    _export_summary(metadata, selected, chapters)
     return metadata, chapters
 
 
@@ -825,16 +951,24 @@ def _fetch_scribblehub_toc(session, series_id):
     ajax_url = 'https://www.scribblehub.com/wp-admin/admin-ajax.php'
     toc = []
     page = 1
+    seen_urls = set()
 
     while page <= 200:
         def _post_toc_page():
-            return session.post(ajax_url, data={
+            session.cookies.clear()
+            response = session.post(ajax_url, data={
                 'action': 'wi_getreleases_pagination',
                 'pagenum': str(page),
                 'mypostid': str(series_id),
                 'mypostid2': '0',
                 'myorder': 'asc',
-            }, timeout=WEB_NOVEL_FETCH_TIMEOUT)
+            }, timeout=WEB_NOVEL_FETCH_TIMEOUT, allow_redirects=False, stream=True,
+                headers={'Authorization': None, 'Cookie': None, 'Referer': None})
+            if 300 <= response.status_code < 400:
+                response.close()
+                raise RuntimeError('Unexpected redirect from Scribble Hub catalog')
+            _read_source_response(response)
+            return response
 
         resp = _retry_fetch(_post_toc_page)
         text = resp.text.strip()
@@ -846,11 +980,18 @@ def _fetch_scribblehub_toc(session, series_id):
         if not links:
             break
 
+        added = 0
         for link in links:
             href = link.get('href', '').strip()
             title = link.get_text(' ', strip=True)
-            if href:
+            if href and href not in seen_urls:
+                seen_urls.add(href)
                 toc.append({'url': href, 'title': title})
+                added += 1
+        if not added:
+            raise RuntimeError('Scribble Hub catalog pagination repeated; cannot verify a complete catalog')
+        if page == 200:
+            raise RuntimeError('Scribble Hub catalog pagination limit reached')
 
         page += 1
         time.sleep(WEB_NOVEL_FETCH_DELAY)
@@ -858,7 +999,7 @@ def _fetch_scribblehub_toc(session, series_id):
     return toc
 
 
-def _extract_scribblehub_chapters(session, series_url, include_author_notes, job_id):
+def _extract_scribblehub_chapters(session, series_url, include_author_notes, job_id, start_chapter=1, end_chapter=None):
     response, final_url = _retry_fetch(
         lambda: _fetch_allowed_response(session, series_url, allowed_hosts=SCRIBBLEHUB_HOSTS)
     )
@@ -875,16 +1016,13 @@ def _extract_scribblehub_chapters(session, series_url, include_author_notes, job
     toc = _fetch_scribblehub_toc(session, series_id)
     if not toc:
         raise RuntimeError('No chapters found on the Scribble Hub series page')
-    if len(toc) > WEB_NOVEL_MAX_CHAPTERS:
-        raise RuntimeError(
-            f'This series has {len(toc)} chapters. The per-export limit is {WEB_NOVEL_MAX_CHAPTERS}.'
-        )
+    selected = _select_chapters(toc, start_chapter, end_chapter)
 
     chapters = []
     seen_urls = set()
     deadline = time.time() + WEB_NOVEL_TIMEOUT
 
-    for index, info in enumerate(toc, start=1):
+    for index, info in selected:
         if time.time() > deadline:
             raise RuntimeError('Web novel export timed out after 60 minutes')
 
@@ -900,6 +1038,7 @@ def _extract_scribblehub_chapters(session, series_url, include_author_notes, job
             lambda: _fetch_allowed_response(session, chapter_url, allowed_hosts=SCRIBBLEHUB_HOSTS)
         )
         chapter_soup = BeautifulSoup(chapter_response.text, 'html.parser')
+        _remove_hidden_content(chapter_soup)
 
         title_el = chapter_soup.select_one('.chapter-title') or chapter_soup.select_one('h1')
         chapter_title = title_el.get_text(' ', strip=True) if title_el else info.get('title') or f'Chapter {index}'
@@ -915,6 +1054,8 @@ def _extract_scribblehub_chapters(session, series_url, include_author_notes, job
                 if cleaned and BeautifulSoup(cleaned, 'html.parser').get_text(' ', strip=True):
                     note_html.append(cleaned)
 
+        for note in content_node.select('.wi_authornotes, .author-note-portlet'):
+            note.decompose()
         chapter_html = _sanitise_fragment(content_node)
         if not chapter_html or not BeautifulSoup(chapter_html, 'html.parser').get_text(' ', strip=True):
             raise RuntimeError(f'Chapter {index} did not contain readable text')
@@ -928,8 +1069,117 @@ def _extract_scribblehub_chapters(session, series_url, include_author_notes, job
         if index < len(toc):
             time.sleep(WEB_NOVEL_FETCH_DELAY)
 
-    metadata['chapter_count'] = len(chapters)
+    _export_summary(metadata, selected, chapters)
     return metadata, chapters
+
+
+def _extract_webnovel_metadata(soup):
+    book = _extract_json_ld_book(soup)
+
+    def meta(key):
+        node = soup.select_one(f'meta[property="{key}"], meta[name="{key}"]')
+        return node.get('content', '').strip() if node else ''
+
+    heading = soup.select_one('h1')
+    author = book.get('author', {})
+    if isinstance(author, list):
+        author = author[0] if author else {}
+    author = author.get('name', '') if isinstance(author, dict) else str(author)
+    description = soup.select_one('.j_synopsis, .synopsis, .book-synopsis')
+    return {
+        'title': book.get('name') or meta('og:title') or (heading.get_text(' ', strip=True) if heading else 'Webnovel export'),
+        'author': author or meta('author') or 'Unknown author',
+        'language': book.get('inLanguage') or 'en',
+        'cover_url': meta('og:image'),
+        'description_html': _sanitise_fragment(description) if description else '<p>' + html.escape(meta('og:description') or meta('description')) + '</p>',
+    }
+
+
+def _webnovel_catalog(soup, series_url):
+    chapters = []
+    seen = set()
+    for row in soup.select('li[data-cid]'):
+        cid = row.get('data-cid', '')
+        if not cid.isdigit():
+            raise RuntimeError('Invalid chapter ID in Webnovel catalog')
+        link = row.select_one('a[href]')
+        locked = any(
+            use.get('href', use.get('xlink:href', '')).strip() == '#i-lock'
+            for use in row.select('svg use')
+        )
+        if cid in seen:
+            existing = next(item for item in chapters if item['id'] == cid)
+            existing['locked'] = existing['locked'] or locked
+            continue
+        seen.add(cid)
+        chapter_url = urljoin(series_url + '/', link['href']) if link else ''
+        if not locked:
+            parsed = urlparse(chapter_url)
+            if (parsed.hostname not in WEBNOVEL_HOSTS or parsed.scheme != 'https'
+                    or parsed.username or parsed.password or parsed.port not in (None, 443)
+                    or not parsed.path.startswith(urlparse(series_url).path + '/')
+                    or not parsed.path.rstrip('/').endswith('_' + cid)):
+                raise RuntimeError('Invalid public chapter link in Webnovel catalog')
+        chapters.append({'id': cid, 'url': chapter_url, 'locked': locked,
+                         'title': row.get_text(' ', strip=True) or f'Chapter {len(chapters) + 1}'})
+    return chapters
+
+
+def _extract_webnovel_chapters(session, series_url, include_author_notes, job_id, start_chapter=1, end_chapter=None):
+    def fetch(url):
+        response, _ = _retry_fetch(lambda: _fetch_allowed_response(session, url, allowed_hosts=WEBNOVEL_HOSTS))
+        return BeautifulSoup(response.text, 'html.parser')
+
+    soup = fetch(series_url)
+    metadata = _extract_webnovel_metadata(soup)
+    catalog = _webnovel_catalog(fetch(series_url.rstrip('/') + '/catalog'), series_url)
+    if not catalog:
+        raise RuntimeError('No server-rendered public Webnovel catalog found; login and JavaScript-only catalogs are unsupported')
+    selected = _select_chapters(catalog, start_chapter, end_chapter)
+    chapters = []
+    skipped = []
+    deadline = time.monotonic() + WEB_NOVEL_TIMEOUT
+    for position, (index, info) in enumerate(selected, start=1):
+        if time.monotonic() > deadline:
+            raise RuntimeError('Web novel export timed out after 60 minutes')
+        _update_job(job_id, progress=10 + int(position / len(selected) * 70), message=f'Reading catalog chapter {index}...')
+        if info['locked']:
+            skipped.append(index)
+            continue
+        chapter_soup = fetch(info['url'])
+        content = chapter_soup.select_one('.cha-content')
+        if chapter_soup.select_one('.cha-content._lock'):
+            skipped.append(index)
+        else:
+            if content is None:
+                raise RuntimeError(f'Could not read Webnovel chapter {index}; it may require login or JavaScript')
+            _remove_hidden_content(chapter_soup)
+            content = chapter_soup.select_one('.cha-content')
+            chapter_html = _sanitise_fragment(content)
+            if not BeautifulSoup(chapter_html, 'html.parser').get_text(' ', strip=True):
+                raise RuntimeError(f'Chapter {index} did not contain readable text')
+            title = chapter_soup.select_one('.cha-tit, h1')
+            chapters.append({'title': title.get_text(' ', strip=True) if title else info['title'],
+                             'html': chapter_html, 'notes': []})
+        if position < len(selected):
+            time.sleep(WEB_NOVEL_FETCH_DELAY)
+    _export_summary(metadata, selected, chapters, skipped)
+    metadata['export_summary'] += ' Public server-rendered catalog only; completeness beyond this catalog is not verified.'
+    return metadata, chapters
+
+
+WEB_NOVEL_ADAPTERS = (
+    (ROYALROAD_HOSTS, _extract_royalroad_chapters),
+    (SCRIBBLEHUB_HOSTS, _extract_scribblehub_chapters),
+    (WEBNOVEL_HOSTS, _extract_webnovel_chapters),
+)
+
+
+def _source_adapter(host):
+    for hosts, extract in WEB_NOVEL_ADAPTERS:
+        if host in hosts:
+            return extract
+    raise ValueError('Unsupported web novel source')
 
 
 def _build_web_novel_html(metadata, chapters, source_url, cover_asset):
@@ -957,6 +1207,8 @@ def _build_web_novel_html(metadata, chapters, source_url, cover_asset):
         '  <p class="source-link">Source: '
         f'<a href="{html.escape(source_url, quote=True)}">{html.escape(source_url)}</a></p>'
     )
+    if metadata.get('export_summary'):
+        parts.append(f'<p>{html.escape(metadata["export_summary"])}</p>')
     description_html = metadata.get('description_html', '').strip()
     if description_html:
         parts.append(f'  <section class="summary">{description_html}</section>')
@@ -999,21 +1251,21 @@ def _render_web_novel_pdf(job_id, source_url, metadata, chapters, pdf_path, page
     _run_weasyprint_render(index_path, work_dir, pdf_path, page_size, margin_mm, font_size_pt, job_id)
 
 
-def _run_web_novel_conversion(job_id, source_url, pdf_path, include_author_notes, page_size, margin_mm, font_size_pt):
+def _run_web_novel_conversion(job_id, source_url, pdf_path, include_author_notes, page_size, margin_mm, font_size_pt, start_chapter=1, end_chapter=None):
     try:
         normalised_url, host = _normalise_web_novel_url(source_url)
 
         session = _build_web_novel_session()
         _update_job(job_id, progress=5, message='Reading fiction metadata...')
-        if host in SCRIBBLEHUB_HOSTS:
-            metadata, chapters = _extract_scribblehub_chapters(session, normalised_url, include_author_notes, job_id)
-        else:
-            metadata, chapters = _extract_royalroad_chapters(session, normalised_url, include_author_notes, job_id)
+        with session:
+            metadata, chapters = _source_adapter(host)(
+                session, normalised_url, include_author_notes, job_id, start_chapter, end_chapter,
+            )
         _update_job(job_id, out_name=_safe_pdf_name(metadata['title']))
 
         _update_job(job_id, progress=90, message='Rendering tagged PDF...')
         _render_web_novel_pdf(job_id, normalised_url, metadata, chapters, pdf_path, page_size, margin_mm, font_size_pt)
-        _update_job(job_id, status='done', progress=100, message='Conversion complete')
+        _update_job(job_id, status='done', progress=100, message=metadata['export_summary'])
         try:
             _track_event_internal('web-novel-to-pdf', 'conversion', len(chapters))
         except Exception:
@@ -1037,6 +1289,12 @@ def start_web_novel_to_pdf():
 
     try:
         _normalise_web_novel_url(source_url)
+        start_chapter = int(request.form.get('start_chapter') or '1')
+        end_chapter = int(request.form['end_chapter']) if request.form.get('end_chapter') else None
+        if start_chapter < 1 or (end_chapter is not None and end_chapter < start_chapter):
+            raise ValueError('Use a positive chapter range with end at or after start')
+        if end_chapter is not None and end_chapter - start_chapter + 1 > WEB_NOVEL_MAX_CHAPTERS:
+            raise ValueError(f'The per-export limit is {WEB_NOVEL_MAX_CHAPTERS} chapters')
     except ValueError as e:
         return {'error': str(e)}, 400
 
@@ -1061,7 +1319,7 @@ def start_web_novel_to_pdf():
 
     threading.Thread(
         target=_run_web_novel_conversion,
-        args=(job_id, source_url, pdf_path, include_author_notes, page_size, margin, font_size),
+        args=(job_id, source_url, pdf_path, include_author_notes, page_size, margin, font_size, start_chapter, end_chapter),
         daemon=True,
     ).start()
     return {'job_id': job_id}
