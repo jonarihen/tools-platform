@@ -387,6 +387,13 @@
         return;
       }
 
+      if (/^[a-f0-9]{16}$/.test(val)) {
+        _slugValid = false;
+        el.style.color = 'var(--danger)';
+        el.textContent = 'This format is reserved for share IDs — choose another';
+        return;
+      }
+
       // Client-side format check first
       const formatOk = /^[a-zA-Z0-9][a-zA-Z0-9\-]{1,48}[a-zA-Z0-9]$/.test(val);
       if (!formatOk) {
