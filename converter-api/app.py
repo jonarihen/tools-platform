@@ -1,5 +1,7 @@
 from flask import Flask, request, send_file, Response
 import subprocess
+import selectors
+import signal
 import os
 import uuid
 import threading
@@ -387,19 +389,33 @@ def _render_accessible_pdf(job_id, htmlz_path, pdf_path, page_size, margin_mm, f
 def _run_conversion(job_id, epub_path, htmlz_path, pdf_path, cmd, page_size, margin_mm, font_size_pt):
     process = None
     try:
+        deadline = time.monotonic() + CALIBRE_TIMEOUT
         process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
         )
-        for raw in process.stdout:
-            line = raw.strip()
-            if not line:
-                continue
-            pct, msg = _parse_line(line)
-            if pct is not None:
-                _update_job(job_id, progress=pct, message=msg)
-            else:
-                _update_job(job_id, message=msg)
-        process.wait(timeout=CALIBRE_TIMEOUT)
+        pending = b''
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not selector.select(remaining):
+                    raise subprocess.TimeoutExpired(cmd, CALIBRE_TIMEOUT)
+                chunk = os.read(process.stdout.fileno(), 65536)
+                if not chunk:
+                    selector.unregister(process.stdout)
+                pending += chunk
+                lines = pending.split(b'\n')
+                pending = lines.pop() if chunk else b''
+                for raw in lines:
+                    line = raw.decode('utf-8', errors='replace').strip()
+                    if line:
+                        pct, msg = _parse_line(line)
+                        if pct is not None:
+                            _update_job(job_id, progress=pct, message=msg)
+                        else:
+                            _update_job(job_id, message=msg)
+                pending = pending[-65536:]
+        process.wait(timeout=max(0, deadline - time.monotonic()))
         if process.returncode == 0 and os.path.exists(htmlz_path):
             _update_job(job_id, progress=90, message='Rendering tagged PDF...')
             _render_accessible_pdf(job_id, htmlz_path, pdf_path, page_size, margin_mm, font_size_pt)
@@ -411,13 +427,18 @@ def _run_conversion(job_id, epub_path, htmlz_path, pdf_path, cmd, page_size, mar
         else:
             _update_job(job_id, status='error', message='Conversion failed')
     except subprocess.TimeoutExpired:
-        if process is not None:
-            process.kill()
         _update_job(job_id, status='error', message='Conversion timed out after 15 minutes')
     except Exception as e:
         logger.exception('EPUB conversion failed for job %s', job_id)
         _update_job(job_id, status='error', message=str(e))
     finally:
+        if process is not None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            process.stdout.close()
         for path in (epub_path, htmlz_path):
             try:
                 os.remove(path)
