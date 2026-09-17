@@ -1680,18 +1680,24 @@ def _get_share_password_from_request():
 def _validate_share_password(row, key):
     if row['password_hash']:
         provided = _get_share_password_from_request()
-        if not check_password_hash(row['password_hash'], provided):
-            client_ip = request.headers.get('X-Real-IP', request.remote_addr)
-            if not _check_rate_limit(
-                client_ip,
-                f'share-password-fail:{row["share_id"]}',
-                SHARE_PASSWORD_FAIL_LIMIT,
-                SHARE_PASSWORD_FAIL_WINDOW,
-            ):
+        client_ip = request.headers.get('X-Real-IP', request.remote_addr)
+        bucket = f'share-password-fail:{row["share_id"]}'
+        reservation = time.time()
+        with _rate_limit_lock:
+            store = _rate_limit_stores.setdefault(bucket, {})
+            attempts = [t for t in store.get(client_ip, [])
+                        if t > reservation - SHARE_PASSWORD_FAIL_WINDOW]
+            store[client_ip] = attempts
+            if len(attempts) >= SHARE_PASSWORD_FAIL_LIMIT:
                 logger.warning('Share password rate limit exceeded from %s for key %s', client_ip, key)
                 return {'error': 'Too many failed password attempts. Please wait 15 minutes and try again.'}, 429
+            attempts.append(reservation)
+        if not check_password_hash(row['password_hash'], provided):
             logger.warning('Failed share password attempt from %s for key %s', client_ip, key)
             return {'error': 'Invalid password'}, 401
+        with _rate_limit_lock:
+            store = _rate_limit_stores.get(bucket, {})
+            store[client_ip] = [t for t in store.get(client_ip, []) if t is not reservation]
     return None
 
 
