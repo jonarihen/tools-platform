@@ -644,12 +644,18 @@ def _fetch_allowed_response(session, url, allowed_hosts=None, allowed_suffixes=(
     return _request_allowed_response(session, 'GET', url, allowed_hosts, allowed_suffixes, max_redirects)
 
 
+def _iter_response_chunks(response):
+    if type(response).__module__.startswith('curl_cffi'):
+        return response.iter_content()
+    return response.iter_content(65536)
+
+
 def _read_source_response(response):
     chunks = []
     size = 0
     started = time.monotonic()
     try:
-        for chunk in response.iter_content():
+        for chunk in _iter_response_chunks(response):
             if not chunk:
                 continue
             size += len(chunk)
@@ -668,8 +674,7 @@ def _check_terminal_response(response):
     challenge_markers = ('cf-browser-verification', 'just a moment', 'cf-challenge-running', 'challenge-platform')
     if response.status_code in (403, 503) and any(marker in text for marker in challenge_markers):
         raise RuntimeError('Blocked by a Cloudflare browser challenge — the source site is restricting automated access')
-    login_markers = ('sign in to continue', 'log in to continue', 'login required', 'subscribe to continue', 'chapter is locked')
-    if response.status_code in (401, 402, 403) or any(marker in text for marker in login_markers):
+    if response.status_code in (401, 402, 403):
         raise RuntimeError('Source content requires login or payment; only public chapters can be exported')
 
 

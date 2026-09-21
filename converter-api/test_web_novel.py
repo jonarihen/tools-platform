@@ -1,5 +1,6 @@
 import ast
 import html
+import io
 import json
 import os
 import random
@@ -228,6 +229,15 @@ class ScraperTests(unittest.TestCase):
             api._read_source_response(result)
         result.close.assert_called_once()
 
+    def test_plain_transport_reads_bounded_chunks(self):
+        plain = requests.Response()
+        plain.raw = io.BytesIO(b'x' * 200000)
+        plain.status_code = 200
+        with patch.object(requests.Response, 'iter_content', autospec=True) as iter_content:
+            iter_content.return_value = iter([b'x'])
+            api._read_source_response(plain)
+        self.assertEqual(iter_content.call_args.args[1:], (65536,))
+
     def test_retry_and_challenge(self):
         with patch.dict(NAMESPACE, {'WEB_NOVEL_RETRY_BACKOFF': 0}):
             fetch = Mock(side_effect=[response(status=429), response(status=502), response('ok')])
@@ -236,7 +246,9 @@ class ScraperTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'Cloudflare'):
                 api._retry_fetch(lambda: response('Just a moment', 403))
             with self.assertRaisesRegex(RuntimeError, 'login or payment'):
-                api._retry_fetch(lambda: response('Sign in to continue', 403))
+                api._retry_fetch(lambda: response('Members only', 403))
+            self.assertEqual(api._retry_fetch(lambda: response('He had to sign in to continue.')).text,
+                             'He had to sign in to continue.')
             with self.assertRaisesRegex(RuntimeError, 'Connection'):
                 api._retry_fetch(Mock(side_effect=requests.Timeout))
             curl = SimpleNamespace(RequestsError=type('CurlError', (Exception,), {}))
@@ -377,6 +389,8 @@ class ScraperTests(unittest.TestCase):
 class CurlTransportIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.requests = []
+        self.first_chunk_seen = threading.Event()
+        self.tail_sent = threading.Event()
         test = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -389,7 +403,8 @@ class CurlTransportIntegrationTests(unittest.TestCase):
                 self.wfile.write(b'a' * 65536)
                 self.wfile.flush()
                 if self.path == '/stream':
-                    time.sleep(0.5)
+                    test.first_chunk_seen.wait(30)
+                    test.tail_sent.set()
                 remaining = size - 65536
                 while remaining:
                     chunk = b'b' * min(65536, remaining)
@@ -435,18 +450,14 @@ class CurlTransportIntegrationTests(unittest.TestCase):
                     session.cookies.set('secret', 'value')
                     session.cookies.clear()
                     self.assertFalse(list(session.cookies))
-                    started = time.monotonic()
                     raw = session.get(self.url + '/stream', stream=True)
-                    opened = time.monotonic() - started
                     iterator = raw.iter_content()
                     first = next(iterator)
-                    first_at = time.monotonic() - started
+                    self.assertFalse(self.tail_sent.is_set())
+                    self.first_chunk_seen.set()
                     rest = b''.join(iterator)
-                    elapsed = time.monotonic() - started
                     raw.close()
-                    self.assertLess(opened, 0.4)
-                    self.assertLess(first_at, 0.4)
-                    self.assertGreaterEqual(elapsed, 0.45)
+                    self.assertTrue(self.tail_sent.is_set())
                     self.assertEqual(len(first) + len(rest), 131072)
                     with self.assertRaisesRegex(RuntimeError, '10 MB'):
                         api._read_source_response(session.get(self.url + '/large', stream=True))
