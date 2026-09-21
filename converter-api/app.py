@@ -547,7 +547,10 @@ class _SourceResponse:
 
     @property
     def text(self):
-        return self.content.decode(self.encoding, errors='replace')
+        try:
+            return self.content.decode(self.encoding, errors='replace')
+        except LookupError:
+            return self.content.decode('utf-8', errors='replace')
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -632,8 +635,11 @@ def _request_allowed_response(session, method, url, allowed_hosts=None, allowed_
             response.close()
             if not location:
                 raise RuntimeError('Source returned a redirect without a destination')
-            current_url = urljoin(current_url, location)
-            method = 'GET'
+            redirect_url = urljoin(current_url, location)
+            _validate_fetch_url(redirect_url, allowed_hosts, allowed_suffixes)
+            if method != 'GET':
+                raise RuntimeError('Source redirected a request that must not be redirected')
+            current_url = redirect_url
             kwargs = {}
             continue
         return _read_source_response(response), current_url

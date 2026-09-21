@@ -229,6 +229,14 @@ class ScraperTests(unittest.TestCase):
             api._read_source_response(result)
         result.close.assert_called_once()
 
+    def test_invalid_response_encoding_falls_back_to_utf8(self):
+        raw = response()
+        raw.encoding = 'invalid-codec-name'
+        source = api._SourceResponse(raw, '<h1>Story café</h1>'.encode())
+        self.assertEqual(source.text, '<h1>Story café</h1>')
+        api._check_terminal_response(source)
+        self.assertEqual(self.soup(source.text).h1.get_text(), 'Story café')
+
     def test_plain_transport_reads_bounded_chunks(self):
         plain = requests.Response()
         plain.raw = io.BytesIO(b'x' * 200000)
@@ -331,10 +339,16 @@ class ScraperTests(unittest.TestCase):
 
     def test_scribblehub_post_redirect_and_repeated_pages(self):
         session = Mock()
-        session.request.return_value = response(status=302, headers={'Location': 'https://evil.test'})
-        with self.assertRaisesRegex(RuntimeError, 'unsupported host'):
-            api._fetch_scribblehub_toc(session, '12')
-        self.assertFalse(session.request.call_args.kwargs['allow_redirects'])
+        ajax_url = 'https://www.scribblehub.com/wp-admin/admin-ajax.php'
+        for status, target, message in (
+            (302, ajax_url, 'must not be redirected'),
+            (303, ajax_url, 'must not be redirected'),
+            (302, 'https://evil.test', 'unsupported host'),
+        ):
+            session.request.return_value = response(status=status, headers={'Location': target})
+            with self.subTest(status=status, target=target), self.assertRaisesRegex(RuntimeError, message):
+                api._fetch_scribblehub_toc(session, '12')
+            self.assertFalse(session.request.call_args.kwargs['allow_redirects'])
         session.request.return_value = response('<li class="toc_w"><a class="toc_a" href="/read/12-story/chapter/1/">One</a></li>')
         with patch.dict(NAMESPACE, {'WEB_NOVEL_FETCH_DELAY': 0}), self.assertRaisesRegex(RuntimeError, 'pagination repeated'):
             api._fetch_scribblehub_toc(session, '12')
