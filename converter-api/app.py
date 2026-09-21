@@ -128,10 +128,12 @@ def _db_get_share(key):
     """Return a Row for a hex ID or slug key, or None."""
     with _db_connect() as conn:
         if _ID_RE.fullmatch(key):
-            return conn.execute(
+            row = conn.execute(
                 'SELECT * FROM shares WHERE share_id = ?', (key,)
             ).fetchone()
-        elif _SLUG_RE.fullmatch(key):
+            if row is not None:
+                return row
+        if _SLUG_RE.fullmatch(key):
             return conn.execute(
                 'SELECT * FROM shares WHERE slug = ?', (key,)
             ).fetchone()
@@ -1641,6 +1643,8 @@ def slug_check():
     slug = request.args.get('slug', '').strip().lower()
     if not slug:
         return {'available': False, 'error': 'No slug provided'}, 400
+    if _ID_RE.fullmatch(slug):
+        return {'available': False, 'error': 'This format is reserved for share IDs'}, 400
     if not _SLUG_RE.fullmatch(slug):
         return {'available': False, 'error': 'Invalid format'}, 400
     with _db_connect() as conn:
@@ -1666,6 +1670,8 @@ def share_upload():
     # ── Custom slug ──────────────────────────────────────────────────────────
     slug = request.form.get('slug', '').strip().lower()
     if slug:
+        if _ID_RE.fullmatch(slug):
+            return {'error': 'This slug format is reserved for share IDs. Please choose another.'}, 400
         if not _SLUG_RE.fullmatch(slug):
             return {'error': 'Invalid slug. Use 3–50 characters: letters, numbers, hyphens. '
                              'Cannot start or end with a hyphen.'}, 400
@@ -1691,7 +1697,13 @@ def share_upload():
 
     # ── Stream file to disk ───────────────────────────────────────────────────
     safe_name = re.sub(r'[^\w.\-() ]', '_', f.filename)[:200]
-    share_id  = str(uuid.uuid4()).replace('-', '')[:16]
+    with _db_connect() as conn:
+        while True:
+            share_id = uuid.uuid4().hex[:16]
+            if not conn.execute(
+                'SELECT 1 FROM shares WHERE share_id = ? OR slug = ?', (share_id, share_id)
+            ).fetchone():
+                break
     file_path = os.path.join(SHARE_DIR, share_id)
 
     size = 0
