@@ -1,10 +1,16 @@
 import ast
 import html
+import io
 import json
+import os
+import random
 import re
+import tempfile
+import threading
 import time
 import unittest
 from flask import Flask, request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -16,10 +22,15 @@ from bs4 import BeautifulSoup
 
 SOURCE = Path(__file__).with_name('app.py')
 TREE = ast.parse(SOURCE.read_text())
+try:
+    from curl_cffi import requests as curl_requests
+except ImportError:
+    curl_requests = None
+
 NAMESPACE = {
-    're': re, 'html': html, 'json': json, 'time': time,
+    're': re, 'html': html, 'json': json, 'os': os, 'random': random, 'time': time,
     'urljoin': urljoin, 'urlparse': urlparse, 'BeautifulSoup': BeautifulSoup,
-    'http_requests': requests, '_update_job': Mock(),
+    'http_requests': requests, 'curl_requests': curl_requests, '_update_job': Mock(),
 }
 NODES = []
 IN_SCRAPER = False
@@ -31,8 +42,8 @@ for node in TREE.body:
         for target in node.targets
     ):
         NODES.append(node)
-    elif isinstance(node, ast.FunctionDef) and IN_SCRAPER:
-        if node.name == 'get_progress':
+    elif isinstance(node, (ast.FunctionDef, ast.ClassDef)) and IN_SCRAPER:
+        if isinstance(node, ast.FunctionDef) and node.name == 'get_progress':
             break
         node.decorator_list = []
         NODES.append(node)
@@ -140,44 +151,125 @@ class ScraperTests(unittest.TestCase):
         for target in ('https://evil.test/x', 'http://127.0.0.1/',
                        'https://user:pass@www.royalroad.com/x', 'file:///etc/passwd'):
             session = Mock()
-            session.get.return_value = response(status=302, headers={'Location': target})
+            session.request.return_value = response(status=302, headers={'Location': target})
             with self.subTest(target=target), self.assertRaises(RuntimeError):
                 api._fetch_allowed_response(session, 'https://www.royalroad.com/fiction/1', api.ROYALROAD_HOSTS)
-            self.assertEqual(session.get.call_count, 1)
-            self.assertFalse(session.get.call_args.kwargs['allow_redirects'])
+            self.assertEqual(session.request.call_count, 1)
+            self.assertFalse(session.request.call_args.kwargs['allow_redirects'])
 
     def test_redirect_loop_and_relative_redirect(self):
         session = Mock()
-        session.get.side_effect = [response(status=302, headers={'Location': '/fiction/2'}), response('OK')]
+        session.request.side_effect = [response(status=302, headers={'Location': '/fiction/2'}), response('OK')]
         result, final = api._fetch_allowed_response(session, 'https://www.royalroad.com/fiction/1', api.ROYALROAD_HOSTS)
         self.assertEqual(result.text, 'OK')
         self.assertEqual(final, 'https://www.royalroad.com/fiction/2')
-        session.get.side_effect = None
-        session.get.return_value = response(status=302, headers={'Location': '/loop'})
+        session.request.side_effect = None
+        session.request.return_value = response(status=302, headers={'Location': '/loop'})
         with self.assertRaisesRegex(RuntimeError, 'Too many redirects'):
             api._fetch_allowed_response(session, final, api.ROYALROAD_HOSTS)
 
     def test_session_has_no_environment_credentials(self):
         with api._build_web_novel_session() as session:
-            self.assertFalse(session.trust_env)
-            self.assertIsNone(session.auth)
+            self.assertFalse(session.session.trust_env)
+            self.assertIsNone(session.session.auth)
+
+    def test_transport_selection_and_optional_dependency(self):
+        plain = Mock()
+        curl = Mock()
+        curl.Session.return_value = Mock()
+        with patch.dict(NAMESPACE, {'curl_requests': curl, 'WEB_NOVEL_IMPERSONATE_DISABLED': False,
+                                    'http_requests': SimpleNamespace(Session=Mock(return_value=plain))}):
+            royal = api._build_web_novel_session('www.royalroad.com')
+            scribble = api._build_web_novel_session('www.scribblehub.com')
+            webnovel = api._build_web_novel_session('www.webnovel.com')
+            cover = api._build_web_novel_session('www.webnovel.com', force_plain=True)
+        self.assertIsNone(royal.impersonate)
+        self.assertIsNone(scribble.impersonate)
+        self.assertEqual(webnovel.impersonate, 'chrome')
+        self.assertIsNone(cover.impersonate)
+        with patch.dict(NAMESPACE, {'curl_requests': None, 'WEB_NOVEL_IMPERSONATE_DISABLED': False}):
+            with self.assertRaisesRegex(RuntimeError, 'unavailable'):
+                api._build_web_novel_session('www.webnovel.com')
+        with patch.dict(NAMESPACE, {'WEB_NOVEL_IMPERSONATE_DISABLED': True,
+                                    'http_requests': SimpleNamespace(Session=Mock(return_value=plain))}):
+            self.assertIsNone(api._build_web_novel_session('www.webnovel.com').impersonate)
+
+    def test_impersonating_request_filters_credentials_and_proxies(self):
+        backend = Mock()
+        backend.request.return_value = response('ok')
+        session = object.__new__(api._WebNovelSession)
+        session.impersonate = 'chrome'
+        session.session = backend
+        session.get('https://www.webnovel.com/book/x_1', headers={
+            'Authorization': 'secret', 'Cookie': 'secret', 'Proxy-Authorization': 'secret',
+            'Referer': 'secret', 'X-Test': 'kept',
+        })
+        kwargs = backend.request.call_args.kwargs
+        self.assertEqual(kwargs['headers'], {'X-Test': 'kept'})
+        self.assertEqual(kwargs['proxies'], {'http': '', 'https': ''})
+        self.assertIsNone(kwargs['auth'])
+        self.assertIsNone(kwargs['proxy_auth'])
+        self.assertEqual(kwargs['impersonate'], 'chrome')
+
+    def test_impersonating_redirect_security(self):
+        backend = Mock()
+        backend.cookies = Mock()
+        backend.request.return_value = response(status=302, headers={'Location': 'https://evil.test/x'})
+        session = object.__new__(api._WebNovelSession)
+        session.impersonate = 'chrome'
+        session.session = backend
+        with self.assertRaisesRegex(RuntimeError, 'unsupported host'):
+            api._fetch_allowed_response(session, 'https://www.webnovel.com/book/x_1', api.WEBNOVEL_HOSTS)
+        self.assertNotIn('Authorization', backend.request.call_args.kwargs['headers'])
 
     def test_response_size_limit(self):
         result = Mock()
-        result.iter_content.return_value = [b'x' * (10 * 1024 * 1024 + 1)]
+        result.iter_content.return_value = iter([b'x' * (10 * 1024 * 1024), b'x'])
         with self.assertRaisesRegex(RuntimeError, '10 MB'):
             api._read_source_response(result)
         result.close.assert_called_once()
+
+    def test_invalid_response_encoding_falls_back_to_utf8(self):
+        raw = response()
+        raw.encoding = 'invalid-codec-name'
+        source = api._SourceResponse(raw, '<h1>Story café</h1>'.encode())
+        self.assertEqual(source.text, '<h1>Story café</h1>')
+        api._check_terminal_response(source)
+        self.assertEqual(self.soup(source.text).h1.get_text(), 'Story café')
+
+    def test_plain_transport_reads_bounded_chunks(self):
+        plain = requests.Response()
+        plain.raw = io.BytesIO(b'x' * 200000)
+        plain.status_code = 200
+        with patch.object(requests.Response, 'iter_content', autospec=True) as iter_content:
+            iter_content.return_value = iter([b'x'])
+            api._read_source_response(plain)
+        self.assertEqual(iter_content.call_args.args[1:], (65536,))
 
     def test_retry_and_challenge(self):
         with patch.dict(NAMESPACE, {'WEB_NOVEL_RETRY_BACKOFF': 0}):
             fetch = Mock(side_effect=[response(status=429), response(status=502), response('ok')])
             self.assertEqual(api._retry_fetch(fetch).text, 'ok')
             self.assertEqual(fetch.call_count, 3)
-            with self.assertRaisesRegex(RuntimeError, 'Cloudflare'):
-                api._retry_fetch(lambda: response('Just a moment', 403))
+            challenge = '<title>Just a moment...</title><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>'
+            for status in (200, 403):
+                fetch = Mock(return_value=response(challenge, status))
+                with self.subTest(status=status), self.assertRaisesRegex(RuntimeError, 'Cloudflare'):
+                    api._retry_fetch(fetch)
+                self.assertEqual(fetch.call_count, 1)
+            public = '<title>Story</title><h1>Story</h1><script src="/cdn-cgi/challenge-platform/h/g/orchestrate"></script><li data-cid="1">Chapter</li>'
+            self.assertEqual(api._retry_fetch(lambda: response(public)).text, public)
+            self.assertEqual(api._retry_fetch(lambda: response('<p>Just a moment, she said.</p>')).status_code, 200)
+            with self.assertRaisesRegex(RuntimeError, 'login or payment'):
+                api._retry_fetch(lambda: response('Members only', 403))
+            self.assertEqual(api._retry_fetch(lambda: response('He had to sign in to continue.')).text,
+                             'He had to sign in to continue.')
             with self.assertRaisesRegex(RuntimeError, 'Connection'):
                 api._retry_fetch(Mock(side_effect=requests.Timeout))
+            curl = SimpleNamespace(RequestsError=type('CurlError', (Exception,), {}))
+            with patch.dict(NAMESPACE, {'curl_requests': curl}):
+                fetch = Mock(side_effect=[curl.RequestsError(), response('ok')])
+                self.assertEqual(api._retry_fetch(fetch).text, 'ok')
 
     def test_ranges(self):
         self.assertEqual(api._select_chapters(['a', 'b', 'c'], 2, 2), [(2, 'b')])
@@ -247,11 +339,17 @@ class ScraperTests(unittest.TestCase):
 
     def test_scribblehub_post_redirect_and_repeated_pages(self):
         session = Mock()
-        session.post.return_value = response(status=302, headers={'Location': 'https://evil.test'})
-        with self.assertRaisesRegex(RuntimeError, 'Unexpected redirect'):
-            api._fetch_scribblehub_toc(session, '12')
-        self.assertFalse(session.post.call_args.kwargs['allow_redirects'])
-        session.post.return_value = response('<li class="toc_w"><a class="toc_a" href="/read/12-story/chapter/1/">One</a></li>')
+        ajax_url = 'https://www.scribblehub.com/wp-admin/admin-ajax.php'
+        for status, target, message in (
+            (302, ajax_url, 'must not be redirected'),
+            (303, ajax_url, 'must not be redirected'),
+            (302, 'https://evil.test', 'unsupported host'),
+        ):
+            session.request.return_value = response(status=status, headers={'Location': target})
+            with self.subTest(status=status, target=target), self.assertRaisesRegex(RuntimeError, message):
+                api._fetch_scribblehub_toc(session, '12')
+            self.assertFalse(session.request.call_args.kwargs['allow_redirects'])
+        session.request.return_value = response('<li class="toc_w"><a class="toc_a" href="/read/12-story/chapter/1/">One</a></li>')
         with patch.dict(NAMESPACE, {'WEB_NOVEL_FETCH_DELAY': 0}), self.assertRaisesRegex(RuntimeError, 'pagination repeated'):
             api._fetch_scribblehub_toc(session, '12')
 
@@ -306,6 +404,99 @@ class ScraperTests(unittest.TestCase):
         self.assertIs(api._source_adapter('www.webnovel.com'), api._extract_webnovel_chapters)
         with self.assertRaises(ValueError):
             api._source_adapter('evil.test')
+
+
+@unittest.skipIf(curl_requests is None, 'curl-cffi is not installed; real impersonating transport integration requires the pinned dependency')
+class CurlTransportIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.requests = []
+        self.first_chunk_seen = threading.Event()
+        self.tail_sent = threading.Event()
+        test = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                test.requests.append(dict(self.headers))
+                size = 10 * 1024 * 1024 + 1 if self.path == '/large' else 131072
+                self.send_response(200)
+                self.send_header('Content-Length', str(size))
+                self.end_headers()
+                self.wfile.write(b'a' * 65536)
+                self.wfile.flush()
+                if self.path == '/stream':
+                    test.first_chunk_seen.wait(30)
+                    test.tail_sent.set()
+                remaining = size - 65536
+                while remaining:
+                    chunk = b'b' * min(65536, remaining)
+                    try:
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError):
+                        break
+                    remaining -= len(chunk)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.url = f'http://127.0.0.1:{self.server.server_port}'
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+
+    def test_real_session_api_isolated_streaming_and_bounded(self):
+        old_env = {key: os.environ.get(key) for key in ('HOME', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY')}
+        with tempfile.TemporaryDirectory() as home:
+            netrc = Path(home, '.netrc')
+            netrc.write_text('machine 127.0.0.1 login leaked password secret\n')
+            netrc.chmod(0o600)
+            os.environ.update({
+                'HOME': home,
+                'HTTP_PROXY': 'http://127.0.0.1:1',
+                'HTTPS_PROXY': 'http://127.0.0.1:1',
+                'ALL_PROXY': 'http://127.0.0.1:1',
+                'NO_PROXY': '',
+            })
+            try:
+                with api._build_web_novel_session('www.webnovel.com') as session:
+                    self.assertEqual(session.impersonate, 'chrome')
+                    self.assertFalse(session.session.trust_env)
+                    self.assertIsNone(session.session.auth)
+                    self.assertEqual(session.session.proxies, {'http': '', 'https': ''})
+                    session.cookies.set('secret', 'value')
+                    session.cookies.clear()
+                    self.assertFalse(list(session.cookies))
+                    raw = session.get(self.url + '/stream', stream=True)
+                    iterator = raw.iter_content()
+                    first = next(iterator)
+                    self.assertFalse(self.tail_sent.is_set())
+                    self.first_chunk_seen.set()
+                    rest = b''.join(iterator)
+                    raw.close()
+                    self.assertTrue(self.tail_sent.is_set())
+                    self.assertEqual(len(first) + len(rest), 131072)
+                    with self.assertRaisesRegex(RuntimeError, '10 MB'):
+                        api._read_source_response(session.get(self.url + '/large', stream=True))
+            finally:
+                for key, value in old_env.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+        self.assertTrue(self.requests)
+        self.assertTrue(all('Authorization' not in headers for headers in self.requests))
+
+    def test_real_exception_classification(self):
+        with patch.dict(NAMESPACE, {'WEB_NOVEL_RETRY_BACKOFF': 0}), patch.object(random, 'uniform', return_value=0):
+            error = curl_requests.RequestsError('transport failed')
+            fetch = Mock(side_effect=[error, response('ok')])
+            self.assertEqual(api._retry_fetch(fetch).text, 'ok')
+            self.assertEqual(fetch.call_count, 2)
 
 
 if __name__ == '__main__':
