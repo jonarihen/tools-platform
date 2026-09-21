@@ -206,7 +206,11 @@ _STAGE_MAP = [
 def _update_job(job_id, **kwargs):
     with _jobs_lock:
         if job_id in _jobs:
-            _jobs[job_id].update(kwargs)
+            job = _jobs[job_id]
+            if kwargs.get('status') in {'done', 'error'}:
+                if job.get('status') not in {'done', 'error'} or not job.get('completed_at'):
+                    kwargs['completed_at'] = time.time()
+            job.update(kwargs)
 
 
 def _parse_line(line):
@@ -1598,19 +1602,31 @@ def _cleanup_expired_shares():
 threading.Thread(target=_cleanup_expired_shares, daemon=True).start()
 
 
+def _expire_terminal_jobs():
+    now = time.time()
+    with _jobs_lock:
+        for jid, job in list(_jobs.items()):
+            if job.get('status') not in {'done', 'error'}:
+                continue
+            completed_at = job.setdefault('completed_at', now)
+            if not isinstance(completed_at, (int, float)):
+                job['completed_at'] = now
+                continue
+            if completed_at > now - JOB_TTL:
+                continue
+            try:
+                os.remove(job.get('pdf_path', ''))
+            except FileNotFoundError:
+                pass
+            except OSError:
+                continue
+            _jobs.pop(jid)
+
+
 def _cleanup_stale_jobs():
-    """Background thread: remove conversion jobs older than JOB_TTL every 5 minutes."""
     while True:
         time.sleep(300)
-        cutoff = time.time() - JOB_TTL
-        with _jobs_lock:
-            stale = [jid for jid, job in _jobs.items() if job.get('created', 0) < cutoff]
-            for jid in stale:
-                job = _jobs.pop(jid)
-                try:
-                    os.remove(job.get('pdf_path', ''))
-                except OSError:
-                    pass
+        _expire_terminal_jobs()
 
 
 threading.Thread(target=_cleanup_stale_jobs, daemon=True).start()
