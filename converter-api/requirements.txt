@@ -1,5 +1,6 @@
 flask==3.0.0
 gunicorn==21.2.0
 requests==2.32.3
+curl-cffi==0.16.3
 weasyprint==68.1
 beautifulsoup4==4.14.3

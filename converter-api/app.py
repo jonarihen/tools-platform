@@ -11,7 +11,12 @@ import sqlite3
 import json
 import logging
 import html
+import random
 import requests as http_requests
+try:
+    from curl_cffi import requests as curl_requests
+except ImportError:
+    curl_requests = None
 import shutil
 import zipfile
 from bs4 import BeautifulSoup
@@ -172,10 +177,13 @@ WEB_NOVEL_MAX_CHAPTERS = 1000
 WEB_NOVEL_RATE_LIMIT = 6
 WEB_NOVEL_RATE_WINDOW = 3600
 WEB_NOVEL_USER_AGENT = 'tools.aaris.tech/1.0 (+https://tools.aaris.tech)'
+WEB_NOVEL_IMPERSONATE_PROFILE = 'chrome'
+WEB_NOVEL_IMPERSONATE_DISABLED = (os.getenv('WEB_NOVEL_DISABLE_IMPERSONATION') or '').lower() in {'1', 'true', 'yes', 'on'}
 ROYALROAD_HOSTS = {'royalroad.com', 'www.royalroad.com'}
 SCRIBBLEHUB_HOSTS = {'scribblehub.com', 'www.scribblehub.com'}
 WEBNOVEL_HOSTS = {'webnovel.com', 'www.webnovel.com'}
 WEB_NOVEL_HOSTS = ROYALROAD_HOSTS | SCRIBBLEHUB_HOSTS | WEBNOVEL_HOSTS
+WEB_NOVEL_IMPERSONATE_HOSTS = {host: WEB_NOVEL_IMPERSONATE_PROFILE for host in WEBNOVEL_HOSTS}
 WEB_NOVEL_ASSET_SUFFIXES = ('royalroadcdn.com', 'scribblehub.com')
 
 _jobs      = {}
@@ -530,43 +538,110 @@ def _normalise_web_novel_url(raw_url):
     return f'https://{host}{path.rstrip("/")}/', host
 
 
-def _build_web_novel_session():
-    session = http_requests.Session()
-    session.trust_env = False
-    session.headers.update({
-        'User-Agent': WEB_NOVEL_USER_AGENT,
-        'Accept-Language': 'en-US,en;q=0.8',
-    })
-    return session
+class _SourceResponse:
+    def __init__(self, response, content):
+        self.status_code = response.status_code
+        self.headers = response.headers
+        self.content = content
+        self.encoding = getattr(response, 'encoding', None) or 'utf-8'
+
+    @property
+    def text(self):
+        return self.content.decode(self.encoding, errors='replace')
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f'Source site returned HTTP {self.status_code}')
 
 
-def _fetch_allowed_response(session, url, allowed_hosts=None, allowed_suffixes=(), max_redirects=4):
+class _WebNovelSession:
+    def __init__(self, host=None, force_plain=False):
+        profile = None if force_plain or WEB_NOVEL_IMPERSONATE_DISABLED else WEB_NOVEL_IMPERSONATE_HOSTS.get(host)
+        self.impersonate = profile
+        if profile and curl_requests is None:
+            raise RuntimeError('Browser-compatible source transport is unavailable')
+        self.session = curl_requests.Session(
+            trust_env=False, auth=None, proxies={'http': '', 'https': ''}, impersonate=profile,
+        ) if profile else http_requests.Session()
+        if not profile:
+            self.session.trust_env = False
+            self.session.auth = None
+            self.session.headers.update({
+                'User-Agent': WEB_NOVEL_USER_AGENT,
+                'Accept-Language': 'en-US,en;q=0.8',
+            })
+
+    @property
+    def cookies(self):
+        return self.session.cookies
+
+    def request(self, method, url, **kwargs):
+        headers = {
+            key: value for key, value in kwargs.pop('headers', {}).items()
+            if value is not None and key.lower() not in {'authorization', 'cookie', 'proxy-authorization', 'referer'}
+        }
+        kwargs['headers'] = headers
+        if self.impersonate:
+            kwargs['impersonate'] = self.impersonate
+            kwargs['auth'] = None
+            kwargs['proxy_auth'] = None
+            kwargs['proxies'] = {'http': '', 'https': ''}
+        return self.session.request(method, url, **kwargs)
+
+    def get(self, url, **kwargs):
+        return self.request('GET', url, **kwargs)
+
+    def post(self, url, **kwargs):
+        return self.request('POST', url, **kwargs)
+
+    def close(self):
+        self.session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+def _build_web_novel_session(host=None, force_plain=False):
+    return _WebNovelSession(host, force_plain)
+
+
+def _validate_fetch_url(url, allowed_hosts=None, allowed_suffixes=()):
+    parsed = urlparse(url)
+    if parsed.scheme not in {'http', 'https'}:
+        raise RuntimeError('Unsupported redirect scheme')
+    if parsed.username or parsed.password or parsed.port not in (None, 80, 443):
+        raise RuntimeError('Unsupported redirect target')
+    if not _host_allowed(parsed.hostname, allowed_hosts=allowed_hosts, allowed_suffixes=allowed_suffixes):
+        raise RuntimeError('Redirected to an unsupported host')
+
+
+def _request_allowed_response(session, method, url, allowed_hosts=None, allowed_suffixes=(), max_redirects=4, **kwargs):
     current_url = url
     for _ in range(max_redirects + 1):
-        parsed = urlparse(current_url)
-        if parsed.scheme not in {'http', 'https'}:
-            raise RuntimeError('Unsupported redirect scheme')
-        if parsed.username or parsed.password or parsed.port not in (None, 80, 443):
-            raise RuntimeError('Unsupported redirect target')
-        if not _host_allowed(parsed.hostname, allowed_hosts=allowed_hosts, allowed_suffixes=allowed_suffixes):
-            raise RuntimeError('Redirected to an unsupported host')
-
+        _validate_fetch_url(current_url, allowed_hosts, allowed_suffixes)
         session.cookies.clear()
-        response = session.get(
-            current_url, timeout=WEB_NOVEL_FETCH_TIMEOUT, allow_redirects=False,
-            stream=True, headers={'Authorization': None, 'Cookie': None, 'Referer': None},
+        response = session.request(
+            method, current_url, timeout=WEB_NOVEL_FETCH_TIMEOUT, allow_redirects=False,
+            stream=True, headers={'Authorization': None, 'Cookie': None, 'Referer': None}, **kwargs,
         )
-        if response.is_redirect or response.is_permanent_redirect:
+        if 300 <= response.status_code < 400:
             location = response.headers.get('Location')
             response.close()
             if not location:
                 raise RuntimeError('Source returned a redirect without a destination')
             current_url = urljoin(current_url, location)
+            method = 'GET'
+            kwargs = {}
             continue
-        _read_source_response(response)
-        return response, current_url
-
+        return _read_source_response(response), current_url
     raise RuntimeError('Too many redirects while fetching source')
+
+
+def _fetch_allowed_response(session, url, allowed_hosts=None, allowed_suffixes=(), max_redirects=4):
+    return _request_allowed_response(session, 'GET', url, allowed_hosts, allowed_suffixes, max_redirects)
 
 
 def _read_source_response(response):
@@ -574,26 +649,35 @@ def _read_source_response(response):
     size = 0
     started = time.monotonic()
     try:
-        for chunk in response.iter_content(65536):
+        for chunk in response.iter_content():
+            if not chunk:
+                continue
             size += len(chunk)
             if size > 10 * 1024 * 1024:
                 raise RuntimeError('Source response exceeds the 10 MB limit')
             if time.monotonic() - started > 90:
                 raise RuntimeError('Source response took too long to download')
             chunks.append(chunk)
-        response._content = b''.join(chunks)
+        return _SourceResponse(response, b''.join(chunks))
     finally:
         response.close()
 
 
-def _check_cloudflare(response):
-    if response.status_code in (403, 503):
-        text = response.text[:2000].lower()
-        if any(s in text for s in ('cf-browser-verification', 'just a moment', 'cf-challenge-running')):
-            raise RuntimeError(
-                'Blocked by a Cloudflare browser challenge — '
-                'the source site is restricting automated access'
-            )
+def _check_terminal_response(response):
+    text = response.text[:4000].lower()
+    challenge_markers = ('cf-browser-verification', 'just a moment', 'cf-challenge-running', 'challenge-platform')
+    if response.status_code in (403, 503) and any(marker in text for marker in challenge_markers):
+        raise RuntimeError('Blocked by a Cloudflare browser challenge — the source site is restricting automated access')
+    login_markers = ('sign in to continue', 'log in to continue', 'login required', 'subscribe to continue', 'chapter is locked')
+    if response.status_code in (401, 402, 403) or any(marker in text for marker in login_markers):
+        raise RuntimeError('Source content requires login or payment; only public chapters can be exported')
+
+
+def _transport_errors():
+    errors = [http_requests.ConnectionError, http_requests.Timeout]
+    if curl_requests is not None:
+        errors.append(curl_requests.RequestsError)
+    return tuple(errors)
 
 
 def _retry_fetch(fn):
@@ -601,32 +685,26 @@ def _retry_fetch(fn):
         retryable = attempt < WEB_NOVEL_FETCH_RETRIES - 1
         try:
             result = fn()
-        except (http_requests.ConnectionError, http_requests.Timeout):
+        except _transport_errors():
             if retryable:
-                time.sleep(WEB_NOVEL_RETRY_BACKOFF * (2 ** attempt))
+                time.sleep(WEB_NOVEL_RETRY_BACKOFF * (2 ** attempt) + random.uniform(0, 0.25))
                 continue
-            raise RuntimeError(
-                f'Connection to the source site failed after {WEB_NOVEL_FETCH_RETRIES} attempts'
-            )
+            raise RuntimeError(f'Connection to the source site failed after {WEB_NOVEL_FETCH_RETRIES} attempts')
 
         response = result[0] if isinstance(result, tuple) else result
-        _check_cloudflare(response)
-
+        _check_terminal_response(response)
         if response.status_code == 429:
             if retryable:
-                time.sleep(WEB_NOVEL_RETRY_BACKOFF * (2 ** attempt))
+                time.sleep(WEB_NOVEL_RETRY_BACKOFF * (2 ** attempt) + random.uniform(0, 0.25))
                 continue
             raise RuntimeError('Rate limited by the source site — please try again later')
-
         if response.status_code >= 500:
             if retryable:
-                time.sleep(WEB_NOVEL_RETRY_BACKOFF * (2 ** attempt))
+                time.sleep(WEB_NOVEL_RETRY_BACKOFF * (2 ** attempt) + random.uniform(0, 0.25))
                 continue
             raise RuntimeError(f'Source site returned a server error (HTTP {response.status_code})')
-
         response.raise_for_status()
         return result
-
     raise RuntimeError('Fetch failed after retries')
 
 
@@ -955,19 +1033,17 @@ def _fetch_scribblehub_toc(session, series_id):
 
     while page <= 200:
         def _post_toc_page():
-            session.cookies.clear()
-            response = session.post(ajax_url, data={
-                'action': 'wi_getreleases_pagination',
-                'pagenum': str(page),
-                'mypostid': str(series_id),
-                'mypostid2': '0',
-                'myorder': 'asc',
-            }, timeout=WEB_NOVEL_FETCH_TIMEOUT, allow_redirects=False, stream=True,
-                headers={'Authorization': None, 'Cookie': None, 'Referer': None})
-            if 300 <= response.status_code < 400:
-                response.close()
+            response, final_url = _request_allowed_response(
+                session, 'POST', ajax_url, allowed_hosts=SCRIBBLEHUB_HOSTS, data={
+                    'action': 'wi_getreleases_pagination',
+                    'pagenum': str(page),
+                    'mypostid': str(series_id),
+                    'mypostid2': '0',
+                    'myorder': 'asc',
+                },
+            )
+            if final_url != ajax_url:
                 raise RuntimeError('Unexpected redirect from Scribble Hub catalog')
-            _read_source_response(response)
             return response
 
         resp = _retry_fetch(_post_toc_page)
@@ -1236,7 +1312,7 @@ def _render_web_novel_pdf(job_id, source_url, metadata, chapters, pdf_path, page
     shutil.rmtree(work_dir, ignore_errors=True)
     os.makedirs(work_dir, exist_ok=True)
 
-    session = _build_web_novel_session()
+    session = _build_web_novel_session(force_plain=True)
     cover_asset = None
     try:
         cover_asset = _download_cover_asset(session, metadata.get('cover_url'), work_dir)
@@ -1255,7 +1331,7 @@ def _run_web_novel_conversion(job_id, source_url, pdf_path, include_author_notes
     try:
         normalised_url, host = _normalise_web_novel_url(source_url)
 
-        session = _build_web_novel_session()
+        session = _build_web_novel_session(host)
         _update_job(job_id, progress=5, message='Reading fiction metadata...')
         with session:
             metadata, chapters = _source_adapter(host)(
