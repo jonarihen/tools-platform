@@ -243,8 +243,15 @@ class ScraperTests(unittest.TestCase):
             fetch = Mock(side_effect=[response(status=429), response(status=502), response('ok')])
             self.assertEqual(api._retry_fetch(fetch).text, 'ok')
             self.assertEqual(fetch.call_count, 3)
-            with self.assertRaisesRegex(RuntimeError, 'Cloudflare'):
-                api._retry_fetch(lambda: response('Just a moment', 403))
+            challenge = '<title>Just a moment...</title><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>'
+            for status in (200, 403):
+                fetch = Mock(return_value=response(challenge, status))
+                with self.subTest(status=status), self.assertRaisesRegex(RuntimeError, 'Cloudflare'):
+                    api._retry_fetch(fetch)
+                self.assertEqual(fetch.call_count, 1)
+            public = '<title>Story</title><h1>Story</h1><script src="/cdn-cgi/challenge-platform/h/g/orchestrate"></script><li data-cid="1">Chapter</li>'
+            self.assertEqual(api._retry_fetch(lambda: response(public)).text, public)
+            self.assertEqual(api._retry_fetch(lambda: response('<p>Just a moment, she said.</p>')).status_code, 200)
             with self.assertRaisesRegex(RuntimeError, 'login or payment'):
                 api._retry_fetch(lambda: response('Members only', 403))
             self.assertEqual(api._retry_fetch(lambda: response('He had to sign in to continue.')).text,

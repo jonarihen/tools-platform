@@ -671,8 +671,10 @@ def _read_source_response(response):
 
 def _check_terminal_response(response):
     text = response.text[:4000].lower()
-    challenge_markers = ('cf-browser-verification', 'just a moment', 'cf-challenge-running', 'challenge-platform')
-    if response.status_code in (403, 503) and any(marker in text for marker in challenge_markers):
+    challenge_markers = ('cf-browser-verification', 'cf-challenge-running', 'challenge-platform')
+    challenge_title = bool(re.search(r'<title[^>]*>\s*(?:just a moment(?:\.\.\.)?|cloudflare[^<]*(?:verification|challenge))\s*</title>', text))
+    challenge_structure = any(marker in text for marker in challenge_markers)
+    if (response.status_code in (403, 503) and (challenge_title or challenge_structure)) or (challenge_title and challenge_structure):
         raise RuntimeError('Blocked by a Cloudflare browser challenge — the source site is restricting automated access')
     if response.status_code in (401, 402, 403):
         raise RuntimeError('Source content requires login or payment; only public chapters can be exported')
