@@ -621,7 +621,7 @@ def _validate_fetch_url(url, allowed_hosts=None, allowed_suffixes=()):
         raise RuntimeError('Redirected to an unsupported host')
 
 
-def _request_allowed_response(session, method, url, allowed_hosts=None, allowed_suffixes=(), max_redirects=4, **kwargs):
+def _request_allowed_response(session, method, url, allowed_hosts=None, allowed_suffixes=(), max_redirects=4, follow_redirects=True, **kwargs):
     current_url = url
     for _ in range(max_redirects + 1):
         _validate_fetch_url(current_url, allowed_hosts, allowed_suffixes)
@@ -637,9 +637,10 @@ def _request_allowed_response(session, method, url, allowed_hosts=None, allowed_
                 raise RuntimeError('Source returned a redirect without a destination')
             redirect_url = urljoin(current_url, location)
             _validate_fetch_url(redirect_url, allowed_hosts, allowed_suffixes)
-            if method != 'GET':
+            if not follow_redirects:
                 raise RuntimeError('Source redirected a request that must not be redirected')
             current_url = redirect_url
+            method = 'GET'
             kwargs = {}
             continue
         return _read_source_response(response), current_url
@@ -1046,8 +1047,8 @@ def _fetch_scribblehub_toc(session, series_id):
 
     while page <= 200:
         def _post_toc_page():
-            response, final_url = _request_allowed_response(
-                session, 'POST', ajax_url, allowed_hosts=SCRIBBLEHUB_HOSTS, data={
+            response, _ = _request_allowed_response(
+                session, 'POST', ajax_url, allowed_hosts=SCRIBBLEHUB_HOSTS, follow_redirects=False, data={
                     'action': 'wi_getreleases_pagination',
                     'pagenum': str(page),
                     'mypostid': str(series_id),
@@ -1055,8 +1056,6 @@ def _fetch_scribblehub_toc(session, series_id):
                     'myorder': 'asc',
                 },
             )
-            if final_url != ajax_url:
-                raise RuntimeError('Unexpected redirect from Scribble Hub catalog')
             return response
 
         resp = _retry_fetch(_post_toc_page)
